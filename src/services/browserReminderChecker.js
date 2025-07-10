@@ -88,13 +88,21 @@ class BrowserReminderChecker {
           });
           
           // Show notification
-          await notificationService.showTaskReminder(task);
+          console.log(`📋 Attempting to show reminder for task: ${task.text}`);
+          console.log(`🔔 Notification service available:`, notificationService ? 'Yes' : 'No');
+          
+          try {
+            await notificationService.showTaskReminder(task);
+            console.log(`✅ Notification service called successfully for: ${task.text}`);
+          } catch (error) {
+            console.error(`❌ Error calling notification service for task ${task.text}:`, error);
+          }
           
           // Mark as sent in database
           await tasksService.updateTask(task.id, { reminder_sent: true });
           
           remindersShown++;
-          console.log(`Showed reminder for task: ${task.text}`);
+          console.log(`📝 Marked reminder as sent for task: ${task.text}`);
         }
       }
 
