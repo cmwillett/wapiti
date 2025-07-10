@@ -147,11 +147,12 @@ export default function App() {
         </div>
       </div>
       {showPreferences && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4 relative">
+        <div className="fixed inset-0 bg-gray-900 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full mx-4 relative border-4 border-blue-500">
             <button
               onClick={() => setShowPreferences(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-xl"
+              className="absolute top-4 right-4 text-gray-600 hover:text-red-600 text-2xl font-bold bg-gray-100 hover:bg-red-100 rounded-full w-8 h-8 flex items-center justify-center"
+              style={{ lineHeight: '1' }}
             >
               ×
             </button>
