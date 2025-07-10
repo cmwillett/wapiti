@@ -192,11 +192,11 @@ export default function MobilePushTest({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto relative">
+    <div className="fixed inset-0 bg-black bg-opacity-90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto relative border-2 border-green-500">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-600 hover:text-red-600 text-2xl font-bold bg-gray-100 hover:bg-red-100 rounded-full w-8 h-8 flex items-center justify-center"
+          className="absolute top-4 right-4 text-gray-600 hover:text-red-600 text-2xl font-bold bg-gray-100 hover:bg-red-100 rounded-full w-8 h-8 flex items-center justify-center shadow-lg"
         >
           ×
         </button>

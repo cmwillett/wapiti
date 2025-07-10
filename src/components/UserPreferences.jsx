@@ -63,7 +63,7 @@ export default function UserPreferences({ user }) {
   }
 
   return (
-    <div className="max-w-md mx-auto">
+    <div className="max-w-md mx-auto relative z-10">
       <h3 className="text-2xl font-bold mb-6 text-gray-900 text-center">Notification Preferences</h3>
       
       <div className="space-y-6">
