@@ -230,11 +230,28 @@ class NotificationService {
         return;
       }
 
-      // Extract subscription details
+      // Extract subscription details safely
       const endpoint = subscription.endpoint;
-      const keys = subscription.getKeys();
-      const p256dh = btoa(String.fromCharCode(...new Uint8Array(keys.p256dh)));
-      const auth = btoa(String.fromCharCode(...new Uint8Array(keys.auth)));
+      
+      // Modern browsers use getKey() method separately for each key
+      let p256dh, auth;
+      try {
+        const p256dhKey = subscription.getKey('p256dh');
+        const authKey = subscription.getKey('auth');
+        p256dh = btoa(String.fromCharCode(...new Uint8Array(p256dhKey)));
+        auth = btoa(String.fromCharCode(...new Uint8Array(authKey)));
+      } catch (keyError) {
+        console.error('Error extracting subscription keys:', keyError);
+        // Fallback for older browsers
+        try {
+          const keys = subscription.getKeys ? subscription.getKeys() : subscription.keys;
+          p256dh = btoa(String.fromCharCode(...new Uint8Array(keys.p256dh)));
+          auth = btoa(String.fromCharCode(...new Uint8Array(keys.auth)));
+        } catch (fallbackError) {
+          console.error('Fallback key extraction failed:', fallbackError);
+          throw new Error('Unable to extract subscription keys');
+        }
+      }
       
       // Get device information
       const userAgent = navigator.userAgent;

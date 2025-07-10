@@ -21,6 +21,31 @@ async function checkDeviceRegistration() {
 
     if (subError) {
       console.error('❌ Error fetching subscriptions:', subError);
+      
+      // Check if table doesn't exist
+      if (subError.code === '42P01') {
+        console.log('\n🔧 The push_subscriptions table does not exist in your Supabase database.');
+        console.log('📋 To fix this, run the following SQL in your Supabase SQL Editor:');
+        console.log('');
+        console.log('CREATE TABLE IF NOT EXISTS push_subscriptions (');
+        console.log('  id BIGSERIAL PRIMARY KEY,');
+        console.log('  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,');
+        console.log('  endpoint TEXT NOT NULL,');
+        console.log('  p256dh TEXT NOT NULL,');
+        console.log('  auth TEXT NOT NULL,');
+        console.log('  device_name TEXT NOT NULL,');
+        console.log('  user_agent TEXT,');
+        console.log('  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),');
+        console.log('  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),');
+        console.log('  UNIQUE(user_id, endpoint)');
+        console.log(');');
+        console.log('');
+        console.log('-- Enable RLS and create policies');
+        console.log('ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;');
+        console.log('-- (Add RLS policies as needed)');
+        console.log('');
+        console.log('💡 Or check the file: supabase/migrations/create_push_subscriptions_table.sql');
+      }
       return;
     }
 
