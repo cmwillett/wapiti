@@ -148,7 +148,7 @@ export default function App() {
         </div>
       </div>
       {showPreferences && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+        <div className="fixed inset-0 bg-black flex items-center justify-center z-40 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.95)' }}>
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full mx-4 relative border-4 border-blue-500 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowPreferences(false)}
