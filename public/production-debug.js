@@ -23,9 +23,18 @@ window.productionNotificationDebug = async function() {
     
     // Environment variables check
     console.log('\n3️⃣ Environment Variables:');
-    console.log('   VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing');
-    console.log('   VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
-    console.log('   VITE_VAPID_PUBLIC_KEY:', import.meta.env.VITE_VAPID_PUBLIC_KEY ? '✅ Set' : '❌ Missing');
+    // Try to get environment variables from window or check if they're available
+    const checkEnvVar = (varName) => {
+        try {
+            return window.__VITE_ENV__ && window.__VITE_ENV__[varName] ? '✅ Set' : '❓ Unknown';
+        } catch {
+            return '❓ Unknown - check build config';
+        }
+    };
+    console.log('   VITE_SUPABASE_URL:', checkEnvVar('VITE_SUPABASE_URL'));
+    console.log('   VITE_SUPABASE_ANON_KEY:', checkEnvVar('VITE_SUPABASE_ANON_KEY'));
+    console.log('   VITE_VAPID_PUBLIC_KEY:', checkEnvVar('VITE_VAPID_PUBLIC_KEY'));
+    console.log('   💡 Note: Run window.checkProductionEnv() for manual env check');
     
     // Service Worker check
     console.log('\n4️⃣ Service Worker Status:');
@@ -149,6 +158,24 @@ window.productionNotificationDebug = async function() {
     
     console.log('\n=' .repeat(60));
     console.log('🎯 Debug complete. Check the logs above for issues.');
+};
+
+// Helper function to manually check environment
+window.checkProductionEnv = function() {
+    console.log('🔧 Manual Environment Check:');
+    console.log('Supabase client available:', window.supabase ? 'Yes' : 'No');
+    if (window.supabase) {
+        console.log('Supabase URL:', window.supabase.supabaseUrl || 'Not found');
+        console.log('Supabase Key:', window.supabase.supabaseKey ? 'Available' : 'Missing');
+    }
+    console.log('Browser reminder checker:', window.browserReminderChecker ? 'Available' : 'Missing');
+    console.log('Notification service:', window.notificationService ? 'Available' : 'Missing');
+};
+
+// Helper function to set Supabase config manually
+window.setSupabaseConfig = function(url, key) {
+    window.tempSupabaseConfig = { url, key };
+    console.log('✅ Temporary Supabase config set. Run tests again.');
 };
 
 // Auto-run debug

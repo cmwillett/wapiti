@@ -8,12 +8,19 @@ window.testProductionEdgeFunction = async function() {
     console.log('=' .repeat(50));
     
     try {
-        // Get the Supabase URL from environment
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        // Get the Supabase URL from window.supabase or ask user to provide
+        let supabaseUrl, supabaseAnonKey;
         
-        if (!supabaseUrl || !supabaseAnonKey) {
-            console.log('❌ Missing Supabase environment variables');
+        if (window.tempSupabaseConfig) {
+            supabaseUrl = window.tempSupabaseConfig.url;
+            supabaseAnonKey = window.tempSupabaseConfig.key;
+        } else if (window.supabase && window.supabase.supabaseUrl && window.supabase.supabaseKey) {
+            supabaseUrl = window.supabase.supabaseUrl;
+            supabaseAnonKey = window.supabase.supabaseKey;
+        } else {
+            console.log('ℹ️ Cannot auto-detect Supabase config');
+            console.log('💡 Please run: window.setSupabaseConfig("YOUR_URL", "YOUR_ANON_KEY")');
+            console.log('💡 Or check if window.supabase is available');
             return;
         }
         
@@ -65,9 +72,10 @@ window.testProductionPushSubscription = async function() {
             const registration = await navigator.serviceWorker.ready;
             console.log('✅ Service Worker ready');
             
-            const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+            const vapidPublicKey = window.tempVapidKey || window.vapidKey || null;
             if (!vapidPublicKey) {
                 console.log('❌ VAPID public key missing');
+                console.log('💡 Please run: window.tempVapidKey = "YOUR_VAPID_PUBLIC_KEY"');
                 return;
             }
             
