@@ -193,7 +193,7 @@ export default function MobilePushTest({ onClose }) {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.98)' }}>
-      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto relative border-2 border-green-500">
+      <div className="rounded-xl shadow-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto relative border-2 border-green-500" style={{ backgroundColor: 'white' }}>
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-600 hover:text-red-600 text-2xl font-bold bg-gray-100 hover:bg-red-100 rounded-full w-8 h-8 flex items-center justify-center shadow-lg"
