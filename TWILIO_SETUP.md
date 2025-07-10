@@ -16,12 +16,28 @@ In your Twilio Console:
 
 ## 3. Add to Supabase
 
-In your Supabase Dashboard → Settings → Environment Variables:
+In your Supabase Dashboard, environment variables for Edge Functions are set in one of these locations:
 
-```
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your_auth_token_here
-TWILIO_PHONE_NUMBER=+1234567890
+**Option A: Edge Functions → Secrets (Recommended)**
+1. Go to **Edge Functions** in the left sidebar
+2. Click on **Settings** or **Secrets** (may be a gear icon)
+3. Add your secrets:
+   ```
+   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   TWILIO_AUTH_TOKEN=your_auth_token_here
+   TWILIO_PHONE_NUMBER=+1234567890
+   ```
+
+**Option B: Project Settings → API**
+1. Go to **Settings** → **API** in the left sidebar
+2. Look for **Project Settings** or **Environment Variables** section
+3. Add the same variables
+
+**Option C: If using Supabase CLI later**
+```bash
+supabase secrets set TWILIO_ACCOUNT_SID=your_account_sid
+supabase secrets set TWILIO_AUTH_TOKEN=your_auth_token
+supabase secrets set TWILIO_PHONE_NUMBER=your_phone_number
 ```
 
 **Important Notes:**
