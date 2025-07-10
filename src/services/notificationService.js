@@ -324,3 +324,8 @@ export const notificationService = new NotificationService();
 // Export helper functions for use in components
 export const initializeNotifications = () => notificationService.initializeNotifications();
 export const registerNotifications = () => notificationService.requestNotificationPermission();
+
+// Make notification service globally available for debugging
+if (typeof window !== 'undefined') {
+  window.notificationService = notificationService;
+}
