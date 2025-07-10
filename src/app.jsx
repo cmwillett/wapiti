@@ -6,6 +6,7 @@ import Login from './Login';
 import { supabase } from './supabaseClient';
 import { listsService, tasksService, subscriptionsService, debugService } from './services/supabaseService';
 import { registerNotifications, initializeNotifications } from './services/notificationService';
+import { browserReminderChecker } from './services/browserReminderChecker';
 
 export default function App() {
   const [user, setUser] = useState(null);

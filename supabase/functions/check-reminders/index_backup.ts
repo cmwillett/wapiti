@@ -322,7 +322,7 @@ async function sendPushNotification(task: Task, subscription: any): Promise<Noti
     }
 
     // Send push notification using Web Push Protocol
-    await sendWebPush(parsedSubscription, payload, vapidPrivateKey, vapidPublicKey, task)
+    await sendWebPush(parsedSubscription, payload, vapidPrivateKey, vapidPublicKey)
     
     console.log(`Push notification sent for task ${task.id}`)
     return { success: true, method: 'push' }
@@ -333,7 +333,7 @@ async function sendPushNotification(task: Task, subscription: any): Promise<Noti
 }
 
 // Web Push Protocol implementation with FCM compatibility
-async function sendWebPush(subscription: any, payload: string, privateKey: string, publicKey: string, task: Task) {
+async function sendWebPush(subscription: any, payload: string, privateKey: string, publicKey: string) {
   const endpoint = subscription.endpoint
   
   if (!endpoint) {
@@ -351,96 +351,31 @@ async function sendWebPush(subscription: any, payload: string, privateKey: strin
   console.log(`Audience: ${audience}`)
   console.log(`Payload: ${payload}`)
   
-  // For FCM (Google Chrome), try data-only message format
+  // For FCM (Google Chrome), use data-less push
   if (endpoint.includes('fcm.googleapis.com')) {
-    console.log('Detected FCM endpoint, sending simplified data message')
-    
-    // Send simplified task data that service worker can use
-    const simplePayload = JSON.stringify({
-      taskId: task.id.toString(),
-      text: task.text,
-      body: `Don't forget: ${task.text}`,
-      title: '📝 Task Reminder',
-      action: 'task-reminder'
-    })
-    
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `vapid t=${vapidJWT}, k=${publicKey}`,
-      'TTL': '86400'
-    }
-    
-    console.log(`Sending FCM simplified message: ${simplePayload}`)
-    
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: headers,
-      body: simplePayload
-    })
-    
-    if (response.ok) {
-      console.log('FCM simplified message sent successfully')
-      return response
-    }
-    
-    const errorText = await response.text()
-    console.error(`FCM simplified message failed: ${response.status} - ${errorText}`)
-    
-    // Try data-only format as fallback
-    console.log('Trying data-only format as fallback')
-    
-    const dataPayload = {
-      'data': {
-        'title': '📝 Task Reminder',
-        'body': `Don't forget: ${task.text}`,
-        'icon': '/favicon.svg',
-        'badge': '/favicon.svg',
-        'tag': `task-${task.id}`,
-        'taskId': task.id.toString(),
-        'action': 'task-reminder',
-        'text': task.text
+      console.log('Detected FCM endpoint, using data-less push approach')
+      
+      const headers = {
+        'Authorization': `vapid t=${vapidJWT}, k=${publicKey}`,
+        'TTL': '86400'
       }
-    }
-    
-    console.log(`Sending FCM data-only message: ${JSON.stringify(dataPayload)}`)
-    
-    const dataResponse = await fetch(endpoint, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(dataPayload)
-    })
-    
-    if (dataResponse.ok) {
-      console.log('FCM data-only message sent successfully')
-      return dataResponse
-    }
-    
-    const dataErrorText = await dataResponse.text()
-    console.error(`FCM data-only message failed: ${dataResponse.status} - ${dataErrorText}`)
-    
-    const notificationHeaders = {
-      'Content-Type': 'application/octet-stream',
-      'Authorization': `vapid t=${vapidJWT}, k=${publicKey}`,
-      'TTL': '86400'
-    }
-    
-    const payloadBuffer = new TextEncoder().encode(payload)
-    
-    const fallbackResponse = await fetch(endpoint, {
-      method: 'POST',
-      headers: notificationHeaders,
-      body: payloadBuffer
-    })
-    
-    if (fallbackResponse.ok) {
-      console.log('FCM fallback notification sent successfully')
-      return fallbackResponse
-    }
-    
-    const fallbackErrorText = await fallbackResponse.text()
-    console.error(`FCM fallback failed: ${fallbackResponse.status} - ${fallbackErrorText}`)
-    throw new Error(`FCM failed: ${fallbackResponse.status} - ${fallbackErrorText}`)
-    
+      
+      console.log('Sending FCM data-less push (service worker will fetch task details)')
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: headers
+      })
+      
+      if (response.ok) {
+        console.log('FCM data-less push sent successfully')
+        return response
+      }
+      
+      const errorText = await response.text()
+      console.error(`FCM push failed: ${response.status} - ${errorText}`)
+      throw new Error(`FCM push failed: ${response.status} - ${errorText}`)
+      
   } else {
     // For other push services, use standard approach
     const headers = {

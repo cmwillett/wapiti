@@ -14,37 +14,399 @@ self.addEventListener('activate', (event) => {
 
 // Handle push messages from the server
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
-
+  console.log('SW: Push event received in service worker:', event);
+  
+  // Try to get data from the push event first
+  let pushData = null;
   try {
-    const data = event.data.json();
-    
-    const options = {
-      body: data.body,
-      icon: data.icon || '/favicon.ico',
-      badge: data.badge || '/favicon.ico',
-      tag: data.tag || 'default',
-      requireInteraction: true,
-      actions: data.actions || [],
-      data: data.data || {}
-    };
-
-    event.waitUntil(
-      self.registration.showNotification(data.title, options)
-    );
+    if (event.data) {
+      const rawData = event.data.text();
+      console.log('SW: Raw push data:', rawData);
+      
+      // Try to parse as JSON
+      try {
+        pushData = JSON.parse(rawData);
+        console.log('SW: Parsed push data:', pushData);
+      } catch (parseError) {
+        console.log('SW: Failed to parse push data as JSON:', parseError);
+      }
+    }
   } catch (error) {
-    console.error('Error handling push message:', error);
-    
-    // Fallback notification if parsing fails
-    event.waitUntil(
-      self.registration.showNotification('Task Reminder', {
-        body: 'You have a task reminder!',
-        icon: '/favicon.ico',
-        tag: 'fallback'
-      })
-    );
+    console.log('SW: No valid data in push event:', error);
   }
+  
+  event.waitUntil(
+    fetchAndShowReminder(pushData)
+  );
 });
+
+async function fetchAndShowReminder(pushData = null) {
+  try {
+    console.log('SW: Looking for reminder data...');
+    
+    // Check if we have push data in the new data-only format
+    if (pushData && pushData.data) {
+      console.log('SW: Using data-only push format:', pushData.data);
+      
+      const data = pushData.data;
+      await self.registration.showNotification(data.title || '📝 Task Reminder', {
+        body: data.body || 'You have a task reminder',
+        icon: data.icon || '/favicon.svg',
+        badge: data.badge || '/favicon.svg',
+        tag: data.tag || 'task-reminder',
+        requireInteraction: true,
+        silent: false,
+        vibrate: [200, 100, 200],
+        actions: [
+          { action: 'complete', title: 'Mark Complete' },
+          { action: 'snooze', title: 'Snooze 15 min' }
+        ],
+        data: {
+          taskId: parseInt(data.taskId) || 0,
+          action: data.action || 'task-reminder'
+        }
+      });
+
+      console.log(`SW: Showed notification using data-only format: ${data.body}`);
+      return;
+    }
+    
+    // Check if we have any push data with reminder information directly
+    if (pushData && (pushData.taskId || pushData.body || pushData.text)) {
+      console.log('SW: Using direct push data:', pushData);
+      
+      const taskText = pushData.body || pushData.text || 'You have a task reminder';
+      
+      await self.registration.showNotification('📝 Task Reminder', {
+        body: taskText,
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
+        tag: `task-${pushData.taskId || 'unknown'}`,
+        requireInteraction: true,
+        silent: false,
+        vibrate: [200, 100, 200],
+        actions: [
+          { action: 'complete', title: 'Mark Complete' },
+          { action: 'snooze', title: 'Snooze 15 min' }
+        ],
+        data: {
+          taskId: parseInt(pushData.taskId) || 0,
+          action: 'task-reminder'
+        }
+      });
+
+      console.log(`SW: Showed notification using direct push data: ${taskText}`);
+      return;
+    }
+    
+    // Check if we have push data in the old notification format
+    if (pushData && pushData.title && pushData.body) {
+      console.log('SW: Using notification push format:', pushData);
+      
+      await self.registration.showNotification(pushData.title, {
+        body: pushData.body,
+        icon: pushData.icon || '/favicon.svg',
+        badge: pushData.badge || '/favicon.svg',
+        tag: pushData.tag || 'task-reminder',
+        requireInteraction: true,
+        silent: false,
+        vibrate: [200, 100, 200],
+        actions: pushData.actions || [
+          { action: 'complete', title: 'Mark Complete' },
+          { action: 'snooze', title: 'Snooze 15 min' }
+        ],
+        data: pushData.data || {
+          action: 'task-reminder'
+        }
+      });
+
+      console.log('SW: Showed notification using notification format');
+      return;
+    }
+    
+    console.log('SW: No push data available, fetching fresh reminder data from Edge Function...');
+    
+    // Try to fetch fresh reminder data from the Edge Function
+    try {
+      console.log('SW: Attempting to fetch pending reminders from Edge Function');
+      
+      // We need to get auth token from IndexedDB or other storage
+      // For now, let's try to get it from IndexedDB where the app might store it
+      const authToken = await getAuthTokenFromStorage();
+      
+      if (authToken) {
+        console.log('SW: Found auth token, fetching pending reminders');
+        
+        const response = await fetch('https://uiczcbezwwfhvahfdxax.supabase.co/functions/v1/check-reminders/pending-reminders', {
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('SW: Fetched pending reminders:', data);
+          
+          if (data.tasks && data.tasks.length > 0) {
+            const task = data.tasks[0]; // Use the first pending reminder
+            
+            await self.registration.showNotification('📝 Task Reminder', {
+              body: `Don't forget: ${task.text}`,
+              icon: '/favicon.svg',
+              badge: '/favicon.svg',
+              tag: `task-${task.id}`,
+              requireInteraction: true,
+              silent: false,
+              vibrate: [200, 100, 200],
+              actions: [
+                { action: 'complete', title: 'Mark Complete' },
+                { action: 'snooze', title: 'Snooze 15 min' }
+              ],
+              data: {
+                taskId: task.id,
+                action: 'task-reminder'
+              }
+            });
+
+            console.log(`SW: Showed notification for fresh task: ${task.text}`);
+            return;
+          }
+        }
+      }
+    } catch (fetchError) {
+      console.error('SW: Failed to fetch fresh reminder data:', fetchError);
+    }
+    
+    // Fall back to IndexedDB
+    console.log('SW: Falling back to IndexedDB...');
+    
+    // Try to get pending reminders from IndexedDB
+    const pendingData = await getFromIndexedDB('pendingReminders');
+    
+    console.log('SW: Received pending data from IndexedDB:', pendingData);
+    
+    if (pendingData && pendingData.reminders && pendingData.reminders.length > 0) {
+      console.log(`SW: Found ${pendingData.reminders.length} pending reminders in IndexedDB`);
+      
+      // Find reminders that are due now (be very generous with timing for reliability)
+      const now = new Date();
+      const currentTime = now.getTime();
+      
+      const dueReminders = pendingData.reminders.filter(reminder => {
+        const reminderTime = new Date(reminder.reminder_time).getTime();
+        const timeDiff = currentTime - reminderTime;
+        
+        // Consider reminders due if they're within 30 minutes of the current time
+        // (past due by up to 30 minutes, or due in the next 10 minutes)
+        const isDue = timeDiff >= -600000 && timeDiff <= 1800000; // 10 minutes future, 30 minutes past
+        
+        console.log(`SW: Reminder "${reminder.text}" due at ${reminder.reminder_time}, diff: ${timeDiff}ms (${Math.round(timeDiff/60000)} min), isDue: ${isDue}`);
+        
+        return isDue;
+      });
+      
+      console.log(`SW: Found ${dueReminders.length} due reminders`);
+      
+      if (dueReminders.length > 0) {
+        // Use the first due reminder
+        const task = dueReminders[0];
+        
+        console.log(`SW: Using due reminder for task: ${task.text}`);
+        
+        await self.registration.showNotification('📝 Task Reminder', {
+          body: `Don't forget: ${task.text}`,
+          icon: '/favicon.svg',
+          badge: '/favicon.svg',
+          tag: `task-${task.id}`,
+          requireInteraction: true,
+          silent: false,
+          vibrate: [200, 100, 200],
+          actions: [
+            { action: 'complete', title: 'Mark Complete' },
+            { action: 'snooze', title: 'Snooze 15 min' }
+          ],
+          data: {
+            taskId: task.id,
+            action: 'task-reminder'
+          }
+        });
+
+        console.log(`SW: Showed notification for task: ${task.text}`);
+        return;
+      } else {
+        console.log('SW: No due reminders found in IndexedDB data');
+        
+        // Check if data is recent (within last 60 minutes) and use first reminder anyway
+        const isRecent = Date.now() - pendingData.timestamp < 60 * 60 * 1000;
+        
+        if (isRecent) {
+          const task = pendingData.reminders[0];
+          
+          console.log(`SW: Using recent pending reminder for task: ${task.text}`);
+          
+          await self.registration.showNotification('📝 Task Reminder', {
+            body: `Don't forget: ${task.text}`,
+            icon: '/favicon.svg',
+            badge: '/favicon.svg',
+            tag: `task-${task.id}`,
+            requireInteraction: true,
+            silent: false,
+            vibrate: [200, 100, 200],
+            actions: [
+              { action: 'complete', title: 'Mark Complete' },
+              { action: 'snooze', title: 'Snooze 15 min' }
+            ],
+            data: {
+              taskId: task.id,
+              action: 'task-reminder'
+            }
+          });
+
+          console.log(`SW: Showed notification for recent task: ${task.text}`);
+          return;
+        } else {
+          console.log('SW: Pending reminder data is too old, ignoring');
+        }
+      }
+    }
+    
+    console.log('SW: No recent pending reminders found, trying Edge Function as last resort...');
+    
+    // Try to fetch from Edge Function without auth (it has an anonymous endpoint)
+    try {
+      console.log('SW: Attempting anonymous call to Edge Function pending-reminders endpoint');
+      
+      const response = await fetch('https://uiczcbezwwfhvahfdxax.supabase.co/functions/v1/check-reminders/pending-reminders', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.status === 401) {
+        console.log('SW: Edge Function requires auth, falling back to generic notification');
+        return showGenericNotification();
+      }
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('SW: Edge Function pending reminders response:', data);
+        
+        if (data.tasks && data.tasks.length > 0) {
+          const task = data.tasks[0]; // Use the first pending reminder
+          
+          await self.registration.showNotification('📝 Task Reminder', {
+            body: `Don't forget: ${task.text}`,
+            icon: '/favicon.svg',
+            badge: '/favicon.svg',
+            tag: `task-${task.id}`,
+            requireInteraction: true,
+            silent: false,
+            vibrate: [200, 100, 200],
+            actions: [
+              { action: 'complete', title: 'Mark Complete' },
+              { action: 'snooze', title: 'Snooze 15 min' }
+            ],
+            data: {
+              taskId: task.id,
+              action: 'task-reminder'
+            }
+          });
+
+          console.log(`SW: Showed notification from Edge Function: ${task.text}`);
+          return;
+        }
+      }
+    } catch (fetchError) {
+      console.error('SW: Failed to fetch from Edge Function:', fetchError);
+    }
+    
+    return showGenericNotification();
+
+  } catch (error) {
+    console.error('SW: Error fetching reminder details:', error);
+    showGenericNotification();
+  }
+}
+
+// Helper function to read from IndexedDB
+async function getFromIndexedDB(key) {
+  try {
+    console.log('SW: Attempting to read from IndexedDB, key:', key);
+    
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('WapitiReminders', 1);
+      
+      request.onerror = () => {
+        console.log('SW: IndexedDB open error:', request.error);
+        reject(request.error);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        console.log('SW: IndexedDB upgrade needed');
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('reminders')) {
+          db.createObjectStore('reminders');
+        }
+      };
+      
+      request.onsuccess = (event) => {
+        console.log('SW: IndexedDB opened successfully');
+        const db = event.target.result;
+        
+        if (!db.objectStoreNames.contains('reminders')) {
+          console.log('SW: No reminders store found');
+          db.close();
+          resolve(null);
+          return;
+        }
+        
+        const transaction = db.transaction(['reminders'], 'readonly');
+        const store = transaction.objectStore('reminders');
+        
+        const getRequest = store.get(key);
+        
+        getRequest.onsuccess = () => {
+          const result = getRequest.result;
+          console.log('SW: IndexedDB get result:', result);
+          db.close();
+          resolve(result);
+        };
+        
+        getRequest.onerror = () => {
+          console.log('SW: IndexedDB get error:', getRequest.error);
+          db.close();
+          reject(getRequest.error);
+        };
+      };
+    });
+  } catch (error) {
+    console.error('SW: Error accessing IndexedDB:', error);
+    return null;
+  }
+}
+
+function showGenericNotification() {
+  console.log('SW: Showing enhanced generic notification with more details');
+  
+  return self.registration.showNotification('📝 Task Reminder', {
+    body: 'You have a task reminder! Check the app for details.',
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    tag: 'reminder',
+    requireInteraction: true,
+    silent: false,
+    vibrate: [200, 100, 200, 100, 200], // More distinctive vibration
+    actions: [
+      { action: 'open', title: 'Open App' },
+      { action: 'dismiss', title: 'Dismiss' }
+    ],
+    data: {
+      action: 'generic-reminder'
+    }
+  });
+}
 
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
@@ -154,3 +516,76 @@ self.addEventListener('message', (event) => {
       console.log('Unknown message type:', type);
   }
 });
+
+// Handle messages from main thread
+self.addEventListener('message', async (event) => {
+  console.log('SW: Received message from main thread:', event.data);
+  
+  if (event.data.type === 'TEST_INDEXEDDB') {
+    console.log('SW: Testing IndexedDB access...');
+    
+    try {
+      const result = await getFromIndexedDB('pendingReminders');
+      console.log('SW: IndexedDB test result:', result);
+      
+      // Send result back to main thread
+      event.ports[0]?.postMessage({
+        type: 'INDEXEDDB_TEST_RESULT',
+        result: result
+      });
+      
+      // Also try to send via client
+      const clients = await self.clients.matchAll();
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'INDEXEDDB_TEST_RESULT',
+          result: result
+        });
+      });
+    } catch (error) {
+      console.error('SW: IndexedDB test error:', error);
+      
+      const errorResult = {
+        type: 'INDEXEDDB_TEST_RESULT',
+        result: null,
+        error: error.message
+      };
+      
+      event.ports[0]?.postMessage(errorResult);
+      
+      const clients = await self.clients.matchAll();
+      clients.forEach(client => {
+        client.postMessage(errorResult);
+      });
+    }
+  }
+});
+
+// Handle messages from the main thread (for testing)
+self.addEventListener('message', (event) => {
+  console.log('SW: Message received:', event.data);
+  
+  if (event.data.type === 'test-push') {
+    console.log('SW: Handling test push message');
+    event.waitUntil(
+      fetchAndShowReminder(event.data.data)
+    );
+  }
+});
+
+// Helper function to get auth token for API calls
+async function getAuthTokenFromStorage() {
+  try {
+    // Try to get the auth token from IndexedDB or other storage
+    // This is a simplified approach - in production you might want more robust token management
+    return new Promise((resolve) => {
+      // Since we can't access localStorage from service worker, we'll return null for now
+      // The main thread should handle auth-required operations
+      console.log('SW: Auth token not available in service worker context');
+      resolve(null);
+    });
+  } catch (error) {
+    console.error('SW: Error getting auth token:', error);
+    return null;
+  }
+}

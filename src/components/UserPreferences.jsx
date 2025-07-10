@@ -20,7 +20,10 @@ export default function UserPreferences({ user }) {
   const loadPreferences = async () => {
     try {
       setLoading(true);
+      console.log('Current user:', user);
+      console.log('User ID:', user?.id);
       const prefs = await userPreferencesService.getUserPreferences();
+      console.log('Loaded preferences:', prefs);
       if (prefs) {
         setPreferences(prefs);
       }
@@ -34,11 +37,13 @@ export default function UserPreferences({ user }) {
   const savePreferences = async () => {
     try {
       setSaving(true);
-      await userPreferencesService.updateUserPreferences(preferences);
+      console.log('Saving preferences:', preferences);
+      const result = await userPreferencesService.updateUserPreferences(preferences);
+      console.log('Save result:', result);
       alert('Preferences saved successfully!');
     } catch (error) {
       console.error('Error saving preferences:', error);
-      alert('Failed to save preferences. Please try again.');
+      alert(`Failed to save preferences: ${error.message}`);
     } finally {
       setSaving(false);
     }

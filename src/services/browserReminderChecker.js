@@ -62,12 +62,31 @@ class BrowserReminderChecker {
 
       const now = new Date();
       let remindersShown = 0;
+      const pendingReminders = [];
+      const allReminders = []; // Store all upcoming reminders, not just due ones
 
       // Check each task
       for (const task of tasks || []) {
         const reminderTime = new Date(task.reminder_time);
         
+        // Store all upcoming reminders for service worker (within next 24 hours)
+        const timeDiff = reminderTime.getTime() - now.getTime();
+        if (timeDiff < 24 * 60 * 60 * 1000 && timeDiff > -30 * 60 * 1000) { // Within 24 hours future, or 30 minutes past
+          allReminders.push({
+            id: task.id,
+            text: task.text,
+            reminder_time: task.reminder_time
+          });
+        }
+        
         if (reminderTime <= now) {
+          // Store for immediate processing
+          pendingReminders.push({
+            id: task.id,
+            text: task.text,
+            reminder_time: task.reminder_time
+          });
+          
           // Show notification
           await notificationService.showTaskReminder(task);
           
@@ -76,6 +95,34 @@ class BrowserReminderChecker {
           
           remindersShown++;
           console.log(`Showed reminder for task: ${task.text}`);
+        }
+      }
+
+      // Always store all upcoming reminders in localStorage and IndexedDB for service worker
+      const reminderData = {
+        timestamp: Date.now(),
+        reminders: allReminders.length > 0 ? allReminders : pendingReminders,
+        lastCheck: now.toISOString()
+      };
+      
+      if (allReminders.length > 0 || pendingReminders.length > 0) {
+        localStorage.setItem('pendingReminders', JSON.stringify(reminderData));
+        console.log(`Stored ${allReminders.length} upcoming reminders in localStorage`);
+        
+        // Also store in IndexedDB for service worker access
+        try {
+          await storeInIndexedDB('pendingReminders', reminderData);
+          console.log('Stored upcoming reminders in IndexedDB for service worker');
+        } catch (error) {
+          console.error('Failed to store in IndexedDB:', error);
+        }
+      } else {
+        // Still store timestamp for service worker to know we're active
+        localStorage.setItem('pendingReminders', JSON.stringify(reminderData));
+        try {
+          await storeInIndexedDB('pendingReminders', reminderData);
+        } catch (error) {
+          console.error('Failed to store in IndexedDB:', error);
         }
       }
 
@@ -91,11 +138,74 @@ class BrowserReminderChecker {
   }
 }
 
+// Helper functions for IndexedDB
+async function storeInIndexedDB(key, data) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('WapitiReminders', 1);
+    
+    request.onerror = () => reject(request.error);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('reminders')) {
+        db.createObjectStore('reminders');
+      }
+    };
+    
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const transaction = db.transaction(['reminders'], 'readwrite');
+      const store = transaction.objectStore('reminders');
+      
+      const putRequest = store.put(data, key);
+      
+      putRequest.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      
+      putRequest.onerror = () => {
+        db.close();
+        reject(putRequest.error);
+      };
+    };
+  });
+}
+
+async function removeFromIndexedDB(key) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('WapitiReminders', 1);
+    
+    request.onerror = () => reject(request.error);
+    
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const transaction = db.transaction(['reminders'], 'readwrite');
+      const store = transaction.objectStore('reminders');
+      
+      const deleteRequest = store.delete(key);
+      
+      deleteRequest.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      
+      deleteRequest.onerror = () => {
+        db.close();
+        reject(deleteRequest.error);
+      };
+    };
+  });
+}
+
 // Export singleton instance
 export const browserReminderChecker = new BrowserReminderChecker();
 
 // Auto-start when imported
 if (typeof window !== 'undefined') {
+  // Make it accessible globally for debugging
+  window.browserReminderChecker = browserReminderChecker;
+  
   // Start checking when the module loads
   browserReminderChecker.start();
   
