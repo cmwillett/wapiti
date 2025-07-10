@@ -1,0 +1,41 @@
+name: Reminder Checker
+
+on:
+  schedule:
+    # Run every minute
+    - cron: '* * * * *'
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  check-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for Due Reminders
+        run: |
+          echo "🔍 Checking for due reminders at $(date)..."
+          response=$(curl -s -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/check-reminders")
+          
+          http_code=$(echo "$response" | tail -c 4)
+          body=$(echo "$response" | head -c -4)
+          
+          echo "📊 HTTP Status: $http_code"
+          echo "📝 Response: $body"
+          
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Error: Function call failed with status $http_code"
+            exit 1
+          fi
+          
+          echo "✅ Reminder check completed successfully"
+
+      - name: Log Execution
+        if: always()
+        run: |
+          echo "⏰ Reminder check job executed at $(date)"
+          echo "📈 Job status: ${{ job.status }}"
+      
+      - name: Log Success
+        run: echo "Reminder check completed successfully"
