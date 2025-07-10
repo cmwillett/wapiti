@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge Function Code - Copy to Supabase</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', Consolas, 'Lucida Console', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-x: auto;
+            position: relative;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .copy-btn:hover {
+            background: #005a9e;
+        }
+        .copy-btn.copied {
+            background: #28a745;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>📝 Edge Function Deployment - Copy Code to Supabase</h1>
+    
+    <div class="warning">
+        <strong>⚠️ Important:</strong> This is the UPDATED Edge Function code that includes multi-device push notification support. You must copy this exact code to Supabase to enable notifications on all user devices.
+    </div>
+
+    <div class="step">
+        <h3>Step 1: Copy the Complete Edge Function Code</h3>
+        <p>Click the "Copy Code" button below to copy all 647 lines of the updated Edge Function code:</p>
+        
+        <div class="code-block" id="edge-function-code">
+            <button class="copy-btn" onclick="copyCode()">Copy Code</button>
+            <pre id="code-content">// Loading Edge Function code...</pre>
+        </div>
+    </div>
+
+    <div class="step">
+        <h3>Step 2: Paste into Supabase Dashboard</h3>
+        <ol>
+            <li>Go to your <strong>Supabase Dashboard</strong></li>
+            <li>Navigate to <strong>Edge Functions</strong> in the left sidebar</li>
+            <li>Find your existing <strong>check-reminders</strong> function and click <strong>Edit</strong></li>
+            <li><strong>DELETE ALL</strong> existing code in the editor</li>
+            <li><strong>PASTE</strong> the copied code (Ctrl+V or Cmd+V)</li>
+            <li>Click <strong>Save</strong> then <strong>Deploy</strong></li>
+        </ol>
+    </div>
+
+    <div class="step">
+        <h3>Step 3: Test on Mobile Device</h3>
+        <p>After deployment:</p>
+        <ol>
+            <li>Open your app on your <strong>Android device</strong> (Chrome PWA)</li>
+            <li>Create a new task with a reminder set for <strong>1-2 minutes</strong> in the future</li>
+            <li><strong>Close the app</strong> or put it in the background</li>
+            <li>Wait for the reminder time - you should receive a <strong>push notification</strong></li>
+        </ol>
+    </div>
+
+    <div class="success">
+        <strong>✅ What This Update Enables:</strong>
+        <ul>
+            <li><strong>Multi-device notifications:</strong> All your devices get notified (desktop, mobile, etc.)</li>
+            <li><strong>Reliable delivery:</strong> Enhanced Android/Chrome compatibility</li>
+            <li><strong>Better logging:</strong> Detailed logs in Supabase for debugging</li>
+            <li><strong>Fallback support:</strong> Multiple notification formats for better compatibility</li>
+        </ul>
+    </div>
+
+    <script>
+        // Load the Edge Function code
+        fetch('/supabase/functions/check-reminders/index.ts')
+            .then(response => response.text())
+            .then(code => {
+                document.getElementById('code-content').textContent = code;
+                document.getElementById('code-content').innerHTML = escapeHtml(code);
+            })
+            .catch(error => {
+                console.error('Error loading code:', error);
+                document.getElementById('code-content').textContent = 'Error loading code. Please copy directly from the file: supabase/functions/check-reminders/index.ts';
+            });
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function copyCode() {
+            const codeElement = document.getElementById('code-content');
+            const code = codeElement.textContent;
+            
+            navigator.clipboard.writeText(code).then(function() {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.textContent = 'Copy Code';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Could not copy text: ', err);
+                alert('Could not copy code. Please select and copy manually.');
+            });
+        }
+
+        // Fallback: Load code directly (for local development)
+        if (window.location.protocol === 'file:') {
+            document.getElementById('code-content').innerHTML = `
+<span style="color: #ff6b6b;">// For local viewing, please copy the code directly from:</span>
+<span style="color: #51cf66;">// supabase/functions/check-reminders/index.ts</span>
+
+<span style="color: #ffd43b;">// This file contains 647 lines of updated Edge Function code</span>
+<span style="color: #ffd43b;">// that enables multi-device push notifications.</span>
+
+<span style="color: #ff6b6b;">// IMPORTANT: You must copy the ENTIRE file content to Supabase!</span>
+            `;
+        }
+    </script>
+</body>
+</html>

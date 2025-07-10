@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { userPreferencesService } from '../services/supabaseService';
+import MobilePushTest from './MobilePushTest';
 
 export default function UserPreferences({ user }) {
   const [preferences, setPreferences] = useState({
@@ -10,6 +11,7 @@ export default function UserPreferences({ user }) {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showMobileTest, setShowMobileTest] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -136,7 +138,24 @@ export default function UserPreferences({ user }) {
         >
           {saving ? 'Saving...' : 'Save Preferences'}
         </button>
+
+        {/* Mobile Push Test Button */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <button
+            onClick={() => setShowMobileTest(true)}
+            className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 font-medium text-sm shadow-md"
+          >
+            📱 Test Mobile Push Notifications
+          </button>
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            Test notifications within the app
+          </p>
+        </div>
       </div>
+      
+      {showMobileTest && (
+        <MobilePushTest onClose={() => setShowMobileTest(false)} />
+      )}
     </div>
   );
 }

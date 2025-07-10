@@ -219,7 +219,7 @@ class NotificationService {
     }
   }
 
-  // Save push subscription to Supabase
+  // Save push subscription to Supabase (supports multiple devices)
   async savePushSubscription(subscription) {
     try {
       const { supabase } = await import('../supabaseClient');
@@ -230,24 +230,65 @@ class NotificationService {
         return;
       }
 
-      const subscriptionData = JSON.stringify(subscription);
+      // Extract subscription details
+      const endpoint = subscription.endpoint;
+      const keys = subscription.getKeys();
+      const p256dh = btoa(String.fromCharCode(...new Uint8Array(keys.p256dh)));
+      const auth = btoa(String.fromCharCode(...new Uint8Array(keys.auth)));
       
+      // Get device information
+      const userAgent = navigator.userAgent;
+      const deviceName = this.getDeviceName(userAgent);
+      
+      console.log('Saving push subscription for device:', deviceName);
+      
+      // Save to push_subscriptions table (supports multiple devices)
       const { error } = await supabase
-        .from('user_preferences')
+        .from('push_subscriptions')
         .upsert({
           user_id: user.id,
-          push_subscription: subscriptionData
+          endpoint: endpoint,
+          p256dh: p256dh,
+          auth: auth,
+          user_agent: userAgent,
+          device_name: deviceName,
+          last_used: new Date().toISOString()
         }, {
-          onConflict: 'user_id'
+          onConflict: 'user_id,endpoint'
         });
 
       if (error) {
         console.error('Error saving push subscription:', error);
       } else {
-        console.log('Push subscription saved successfully');
+        console.log('Push subscription saved successfully for device:', deviceName);
       }
     } catch (error) {
       console.error('Error saving push subscription:', error);
+    }
+  }
+
+  // Helper function to get device name from user agent
+  getDeviceName(userAgent) {
+    if (/Mobile|Android|iPhone|iPad/.test(userAgent)) {
+      if (/Android/.test(userAgent)) {
+        return 'Android Device';
+      } else if (/iPhone/.test(userAgent)) {
+        return 'iPhone';
+      } else if (/iPad/.test(userAgent)) {
+        return 'iPad';
+      } else {
+        return 'Mobile Device';
+      }
+    } else {
+      if (/Windows/.test(userAgent)) {
+        return 'Windows Desktop';
+      } else if (/Mac/.test(userAgent)) {
+        return 'Mac Desktop';
+      } else if (/Linux/.test(userAgent)) {
+        return 'Linux Desktop';
+      } else {
+        return 'Desktop';
+      }
     }
   }
 

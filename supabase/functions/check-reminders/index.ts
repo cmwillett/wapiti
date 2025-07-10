@@ -196,41 +196,76 @@ async function handleCheckReminders(req: Request) {
         // Send notification based on user preference
         let notificationResult: NotificationResult = { success: false, error: 'Unknown error' }
         
-        if (notificationMethod === 'push' && userPrefs?.push_subscription) {
-          notificationResult = await sendPushNotification(task, userPrefs.push_subscription)
+        if (notificationMethod === 'push' || notificationMethod === 'push_sms') {
+          // Get all push subscriptions for this user (multi-device support)
+          const { data: pushSubscriptions, error: subsError } = await supabaseClient
+            .from('push_subscriptions')
+            .select('*')
+            .eq('user_id', task.user_id)
+
+          if (subsError) {
+            console.error('Error fetching push subscriptions:', subsError)
+            notificationResult = { success: false, error: 'Error fetching push subscriptions' }
+          } else if (pushSubscriptions && pushSubscriptions.length > 0) {
+            console.log(`Found ${pushSubscriptions.length} push subscription(s) for user ${task.user_id}`)
+            
+            // Send push notification to all registered devices
+            const pushResults = await Promise.allSettled(
+              pushSubscriptions.map(async (sub) => {
+                console.log(`Sending push to device: ${sub.device_name} (${sub.endpoint.substring(0, 50)}...)`)
+                return await sendPushNotification(task, {
+                  endpoint: sub.endpoint,
+                  keys: {
+                    p256dh: sub.p256dh,
+                    auth: sub.auth
+                  }
+                })
+              })
+            )
+            
+            // Check if any push notification succeeded
+            const successfulPushes = pushResults.filter(result => 
+              result.status === 'fulfilled' && result.value.success
+            )
+            
+            if (successfulPushes.length > 0) {
+              notificationResult = {
+                success: true,
+                method: 'push',
+                messageId: `${successfulPushes.length}/${pushSubscriptions.length} devices`
+              }
+              console.log(`Push notifications sent to ${successfulPushes.length}/${pushSubscriptions.length} devices`)
+            } else {
+              notificationResult = {
+                success: false,
+                method: 'push',
+                error: `Failed to send to all ${pushSubscriptions.length} devices`
+              }
+              console.log(`Push notifications failed for all ${pushSubscriptions.length} devices`)
+            }
+          } else {
+            console.log(`No push subscriptions found for user ${task.user_id}`)
+            notificationResult = { success: false, error: 'No push subscriptions found' }
+          }
+
+          // For hybrid push_sms: if push failed and SMS is available, try SMS
+          if (notificationMethod === 'push_sms' && !notificationResult.success && userPrefs?.phone_number) {
+            console.log(`Push notification failed for task ${task.id}, trying SMS fallback`)
+            const smsResult = await sendSMSNotification(task, userPrefs.phone_number)
+            notificationResult = {
+              success: smsResult.success,
+              method: 'push_sms',
+              error: notificationResult.error,
+              fallback: smsResult
+            }
+          }
         } else if (notificationMethod === 'sms' && userPrefs?.phone_number) {
           notificationResult = await sendSMSNotification(task, userPrefs.phone_number)
         } else if (notificationMethod === 'email' && userPrefs?.email) {
           notificationResult = await sendEmailNotification(task, userPrefs.email)
-        } else if (notificationMethod === 'push_sms') {
-          // Hybrid: Try push first, fallback to SMS
-          if (userPrefs?.push_subscription) {
-            notificationResult = await sendPushNotification(task, userPrefs.push_subscription)
-            // If push fails and SMS is available, try SMS
-            if (!notificationResult.success && userPrefs?.phone_number) {
-              console.log(`Push notification failed for task ${task.id}, trying SMS fallback`)
-              const smsResult = await sendSMSNotification(task, userPrefs.phone_number)
-              notificationResult = {
-                success: smsResult.success,
-                method: 'push_sms',
-                error: notificationResult.error,
-                fallback: smsResult
-              }
-            }
-          } else if (userPrefs?.phone_number) {
-            // No push subscription, use SMS directly
-            notificationResult = await sendSMSNotification(task, userPrefs.phone_number)
-          } else {
-            notificationResult = { success: false, error: 'No push subscription or phone number available for push_sms method' }
-          }
         } else {
-          // Fallback to push if configured, otherwise log
-          if (userPrefs?.push_subscription) {
-            notificationResult = await sendPushNotification(task, userPrefs.push_subscription)
-          } else {
-            console.log(`No notification method available for user ${task.user_id}`)
-            notificationResult = { success: false, error: 'No notification method available' }
-          }
+          console.log(`No notification method available for user ${task.user_id}`)
+          notificationResult = { success: false, error: 'No notification method available' }
         }
 
         // Mark reminder as sent regardless of notification success

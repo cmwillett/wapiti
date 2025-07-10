@@ -1,38 +1,138 @@
-# Edge Function Deployment Guide
+# Edge Function Deployment Guide - UPDATED FOR MULTI-DEVICE SUPPORT
 
-Since the Supabase CLI installation is encountering issues, here are alternative methods to deploy your reminder system.
+## IMPORTANT: Updated Edge Function Code Required
 
-## Option 1: Manual Deployment via Supabase Dashboard
+The Edge Function has been updated to support **multi-device push notifications**. You MUST deploy this updated version to enable notifications on all user devices (desktop, mobile, etc.).
 
-### Step 1: Deploy the Edge Function manually
+## Step 1: Copy the Updated Edge Function Code
 
-1. Go to your [Supabase Dashboard](https://supabase.com/dashboard)
-2. Select your project
-3. Navigate to "Edge Functions" in the left sidebar
-4. Click "New Function"
-5. Name it `check-reminders`
-6. Copy and paste the entire content from `supabase/functions/check-reminders/index.ts`
-7. Click "Deploy Function"
+1. Go to your Supabase Dashboard: https://app.supabase.com/project/[your-project-id]
+2. Navigate to **Edge Functions** in the left sidebar
+3. Find your existing `check-reminders` function and click **Edit**
+4. **DELETE ALL** existing code in the editor (all 647 lines)
+5. **COPY AND PASTE** the complete UPDATED code from `supabase\functions\check-reminders\index.ts`
 
-### Step 2: Configure Environment Variables
+## Step 2: Deploy the Function
 
-In your Supabase Dashboard:
-1. Go to Settings → Environment Variables
-2. Add these variables (if using SMS notifications):
-   - `TWILIO_ACCOUNT_SID`: Your Twilio Account SID
-   - `TWILIO_AUTH_TOKEN`: Your Twilio Auth Token  
-   - `TWILIO_PHONE_NUMBER`: Your Twilio phone number
+1. After pasting the updated code, click **Save** 
+2. Then click **Deploy** to make it live
+3. Wait for the deployment to complete (should take 30-60 seconds)
 
-### Step 3: Test the Function
+## Step 3: Verify the Deployment
 
-Once deployed, you can test it by calling:
+### Test via Browser Console
+1. Open your app in the browser
+2. Press F12 to open developer tools
+3. Go to the Console tab
+4. Run this command:
+```javascript
+// Test the Edge Function
+fetch('https://[your-project-id].supabase.co/functions/v1/check-reminders', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${supabase.auth.session()?.access_token}`,
+    'Content-Type': 'application/json'
+  }
+}).then(r => r.json()).then(console.log)
 ```
-POST https://[your-project-ref].supabase.co/functions/v1/check-reminders
+
+## Step 4: Test Mobile Push Notifications
+
+1. **On your mobile device** (Android PWA):
+   - Open the app in Chrome
+   - Create a new task with a reminder set for 1-2 minutes in the future
+   - Leave the app (put it in background or close Chrome)
+   - Wait for the reminder time - you should receive a push notification
+
+2. **Check the logs**:
+   - In Supabase Dashboard, go to **Edge Functions** → **check-reminders** → **Logs**
+   - You should see logs showing push notifications being sent to multiple devices
+
+## What This Update Does
+
+The updated Edge Function now provides:
+
+✅ **Multi-device support**: Queries ALL push subscriptions for each user from `push_subscriptions` table  
+✅ **Sends to all devices**: Each user gets notifications on ALL their registered devices (desktop, mobile, etc.)  
+✅ **Better logging**: Detailed logs showing delivery status per device  
+✅ **Error handling**: Graceful handling of failed devices while continuing to others  
+✅ **Status reporting**: Shows success rate (e.g., "Push notifications sent to 2/3 devices")  
+✅ **FCM compatibility**: Enhanced Android/Chrome push notification support with multiple fallback formats  
+
+## Expected Behavior After Deployment
+
+When a reminder is due, the Edge Function will:
+1. Find all push subscriptions for the user in the `push_subscriptions` table
+2. Send push notifications to ALL registered devices concurrently
+3. Log detailed results for each device (success/failure)
+4. Report overall success rate (e.g., "2/3 devices successful")
+5. Mark the reminder as sent regardless of individual device failures
+
+## Troubleshooting Mobile Notifications
+
+If notifications still don't work on mobile:
+
+1. **Check Edge Function logs** in Supabase Dashboard → Edge Functions → check-reminders → Logs
+
+2. **Verify push subscription registration** on mobile:
+   ```javascript
+   // Check if mobile device is registered
+   supabase.from('push_subscriptions').select('*').then(console.log)
+   ```
+
+3. **Test notification service** on mobile:
+   ```javascript
+   // Test notification registration on mobile
+   notificationService.requestPermission().then(console.log)
+   ```
+
+4. **Check service worker** status:
+   ```javascript
+   // Verify service worker is active
+   navigator.serviceWorker.ready.then(reg => console.log('SW ready:', reg))
+   ```
+
+## Key Debugging Commands for Mobile
+
+Run these in your mobile browser console (Chrome dev tools):
+
+```javascript
+// 1. Check if push subscriptions exist for your user
+supabase.from('push_subscriptions').select('*').then(console.log)
+
+// 2. Test notification permission
+console.log('Notification permission:', Notification.permission)
+
+// 3. Test service worker and push subscription
+navigator.serviceWorker.ready.then(reg => {
+  console.log('Service worker ready:', reg)
+  return reg.pushManager.getSubscription()
+}).then(sub => console.log('Push subscription:', sub))
+
+// 4. Manual push subscription test
+notificationService.requestPermission().then(result => {
+  console.log('Permission result:', result)
+  if (result === 'granted') {
+    notificationService.subscribeToPush().then(console.log)
+  }
+})
 ```
 
-## Option 2: External Cron Service Setup
+## Next Steps
 
-Since you have the Edge Function ready, you can use external services to call it regularly:
+1. **Deploy the updated Edge Function** using the steps above
+2. **Test on mobile device** (Android PWA) by creating a reminder  
+3. **Verify multi-device notifications** work (create reminder on one device, get notified on all)
+4. **Check Supabase logs** for detailed delivery status per device
+5. **Monitor push subscription table** to ensure devices are properly registered
+
+The system should now provide reliable multi-device notifications for all users!
+
+---
+
+## Alternative: External Cron Service Setup
+
+If you prefer external scheduling, you can use services like GitHub Actions:
 
 ### GitHub Actions (Recommended)
 
