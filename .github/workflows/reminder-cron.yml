@@ -2,7 +2,7 @@ name: Reminder Checker
 
 on:
   schedule:
-    # Run every minute
+    # Run every minute - GitHub Actions enabled
     - cron: '* * * * *'
   workflow_dispatch: # Allow manual trigger for testing
 
