@@ -11,6 +11,8 @@ class NotificationService {
     this.reminderChannel = null;
     this.subscriptionPromise = null; // Add lock for subscription process
     this.initializationPromise = null; // Add lock for initialization process
+    this.currentSubscription = null; // Track current active subscription
+    this.isSubscribed = false; // Track subscription state
     this.setupAuthChannel();
     console.log('NotificationService: Broadcast channels set up');
   }
@@ -247,19 +249,32 @@ class NotificationService {
   async _doSubscribeToPush(registration) {
     if ('PushManager' in window) {
       try {
+        console.log('NotificationService: Starting subscription process...');
+        console.log('NotificationService: Current subscription state:', this.isSubscribed);
+        
+        // If we already have a valid subscription, reuse it
+        if (this.isSubscribed && this.currentSubscription) {
+          console.log('NotificationService: Reusing existing valid subscription');
+          return this.currentSubscription;
+        }
+        
         // Check if we already have a valid subscription
         let subscription = await registration.pushManager.getSubscription();
         
         if (subscription) {
-          console.log('Found existing push subscription:', subscription.endpoint);
+          console.log('NotificationService: Found existing push subscription:', subscription.endpoint);
           
           // Check if this subscription is already saved in database
           const isValid = await this.validateExistingSubscription(subscription);
+          console.log('NotificationService: Subscription validation result:', isValid);
+          
           if (isValid) {
-            console.log('Existing subscription is valid, reusing it');
+            console.log('NotificationService: Existing subscription is valid, reusing it');
+            this.currentSubscription = subscription;
+            this.isSubscribed = true;
             return subscription;
           } else {
-            console.log('Existing subscription is invalid, creating new one');
+            console.log('NotificationService: Existing subscription is invalid, creating new one');
             await subscription.unsubscribe();
             subscription = null;
           }
@@ -267,7 +282,7 @@ class NotificationService {
         
         // Create new subscription if we don't have a valid one
         if (!subscription) {
-          console.log('Creating new push subscription...');
+          console.log('NotificationService: Creating new push subscription...');
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: this.urlBase64ToUint8Array(
@@ -275,15 +290,19 @@ class NotificationService {
             )
           });
           
-          console.log('New push subscription created:', subscription.endpoint);
+          console.log('NotificationService: New push subscription created:', subscription.endpoint);
           
           // Store subscription in Supabase for backend to use
           await this.savePushSubscription(subscription);
+          
+          // Update our internal state
+          this.currentSubscription = subscription;
+          this.isSubscribed = true;
         }
         
         return subscription;
       } catch (error) {
-        console.error('Push subscription failed:', error);
+        console.error('NotificationService: Push subscription failed:', error);
         throw error;
       }
     }
@@ -293,30 +312,36 @@ class NotificationService {
   // Validate if existing subscription is saved in database
   async validateExistingSubscription(subscription) {
     try {
+      console.log('NotificationService: Validating existing subscription...');
       const { supabase } = await import('../supabaseClient');
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
+        console.log('NotificationService: No user found for validation');
         return false;
       }
 
+      console.log('NotificationService: Checking database for endpoint:', subscription.endpoint.substring(0, 50) + '...');
+      
       // Check if this endpoint exists in our database
       const { data, error } = await supabase
         .from('push_subscriptions')
-        .select('id')
+        .select('id, device_name, created_at')
         .eq('user_id', user.id)
         .eq('endpoint', subscription.endpoint)
         .maybeSingle();
 
       if (error) {
-        console.error('Error validating subscription:', error);
+        console.error('NotificationService: Error validating subscription:', error);
         return false;
       }
 
       // If we found a record, the subscription is valid
-      return !!data;
+      const isValid = !!data;
+      console.log('NotificationService: Validation result:', isValid, data ? `(Found: ${data.device_name})` : '(Not found in database)');
+      return isValid;
     } catch (error) {
-      console.error('Error validating subscription:', error);
+      console.error('NotificationService: Error validating subscription:', error);
       return false;
     }
   }
