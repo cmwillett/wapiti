@@ -192,30 +192,75 @@ class NotificationService {
   async subscribeToPush(registration) {
     if ('PushManager' in window) {
       try {
-        // First, check for existing subscription and unsubscribe if necessary
-        const existingSubscription = await registration.pushManager.getSubscription();
-        if (existingSubscription) {
-          console.log('Found existing push subscription, unsubscribing first...');
-          await existingSubscription.unsubscribe();
-          console.log('Successfully unsubscribed from existing subscription');
+        // Check if we already have a valid subscription
+        let subscription = await registration.pushManager.getSubscription();
+        
+        if (subscription) {
+          console.log('Found existing push subscription:', subscription.endpoint);
+          
+          // Check if this subscription is already saved in database
+          const isValid = await this.validateExistingSubscription(subscription);
+          if (isValid) {
+            console.log('Existing subscription is valid, reusing it');
+            return subscription;
+          } else {
+            console.log('Existing subscription is invalid, creating new one');
+            await subscription.unsubscribe();
+            subscription = null;
+          }
         }
         
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: this.urlBase64ToUint8Array(
-            'BJPVlwpCxnv6hdAsbgspbI1xcE7_LwhJvDV2ibZ4alQ38WSzFzN6xf-QyYN2FUOP-miBMRTitIdVPSGb1mjYWZU'
-          )
-        });
-        
-        console.log('Push subscription obtained:', subscription);
-        
-        // Store subscription in Supabase for backend to use
-        await this.savePushSubscription(subscription);
+        // Create new subscription if we don't have a valid one
+        if (!subscription) {
+          console.log('Creating new push subscription...');
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: this.urlBase64ToUint8Array(
+              'BJPVlwpCxnv6hdAsbgspbI1xcE7_LwhJvDV2ibZ4alQ38WSzFzN6xf-QyYN2FUOP-miBMRTitIdVPSGb1mjYWZU'
+            )
+          });
+          
+          console.log('New push subscription created:', subscription.endpoint);
+          
+          // Store subscription in Supabase for backend to use
+          await this.savePushSubscription(subscription);
+        }
         
         return subscription;
       } catch (error) {
         console.error('Push subscription failed:', error);
       }
+    }
+  }
+
+  // Validate if existing subscription is saved in database
+  async validateExistingSubscription(subscription) {
+    try {
+      const { supabase } = await import('../supabaseClient');
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        return false;
+      }
+
+      // Check if this endpoint exists in our database
+      const { data, error } = await supabase
+        .from('push_subscriptions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('endpoint', subscription.endpoint)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error validating subscription:', error);
+        return false;
+      }
+
+      // If we found a record, the subscription is valid
+      return !!data;
+    } catch (error) {
+      console.error('Error validating subscription:', error);
+      return false;
     }
   }
 
@@ -258,28 +303,47 @@ class NotificationService {
       const deviceName = this.getDeviceName(userAgent);
       
       console.log('Saving push subscription for device:', deviceName);
+      console.log('Endpoint:', endpoint.substring(0, 50) + '...');
+      
+      // Check if subscription already exists
+      const { data: existing } = await supabase
+        .from('push_subscriptions')
+        .select('id, device_name, created_at')
+        .eq('user_id', user.id)
+        .eq('endpoint', endpoint)
+        .maybeSingle();
+
+      if (existing) {
+        console.log(`Push subscription already exists for ${existing.device_name} (created ${existing.created_at})`);
+        console.log('Skipping save to prevent duplicate');
+        return existing;
+      }
       
       // Save to push_subscriptions table (supports multiple devices)
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('push_subscriptions')
-        .upsert({
+        .insert({
           user_id: user.id,
           endpoint: endpoint,
           p256dh: p256dh,
           auth: auth,
           user_agent: userAgent,
           device_name: deviceName
-        }, {
-          onConflict: 'user_id,endpoint'
-        });
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error('Error saving push subscription:', error);
+        throw error;
       } else {
         console.log('Push subscription saved successfully for device:', deviceName);
+        console.log('Subscription ID:', data.id);
+        return data;
       }
     } catch (error) {
       console.error('Error saving push subscription:', error);
+      throw error;
     }
   }
 
@@ -343,35 +407,134 @@ class NotificationService {
     }
   }
 
-  // Check for due reminders (called periodically)
-  async checkDueReminders() {
+  // Clean up duplicate or old device registrations for current user
+  async cleanupDeviceRegistrations() {
     try {
-      // This would need to be updated to work with your current list/task system
-      // For now, we'll rely on the backend service to send push notifications
-      console.log('Checking for due reminders...');
+      const { supabase } = await import('../supabaseClient');
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        console.log('No authenticated user for cleanup');
+        return;
+      }
+
+      console.log('Starting device registration cleanup for user:', user.id);
+
+      // Get all subscriptions for this user
+      const { data: subscriptions, error } = await supabase
+        .from('push_subscriptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching subscriptions for cleanup:', error);
+        return;
+      }
+
+      if (!subscriptions || subscriptions.length <= 1) {
+        console.log('No cleanup needed - user has', subscriptions?.length || 0, 'subscriptions');
+        return;
+      }
+
+      console.log(`Found ${subscriptions.length} subscriptions, checking for duplicates...`);
+
+      // Group by endpoint to find duplicates
+      const endpointGroups = {};
+      subscriptions.forEach(sub => {
+        if (!endpointGroups[sub.endpoint]) {
+          endpointGroups[sub.endpoint] = [];
+        }
+        endpointGroups[sub.endpoint].push(sub);
+      });
+
+      let deletedCount = 0;
+      
+      // For each endpoint, keep only the most recent one
+      for (const [endpoint, subs] of Object.entries(endpointGroups)) {
+        if (subs.length > 1) {
+          console.log(`Found ${subs.length} duplicates for endpoint ${endpoint.substring(0, 50)}...`);
+          
+          // Sort by created_at descending, keep the first (most recent)
+          subs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          const toDelete = subs.slice(1); // All except the most recent
+          
+          // Delete the duplicates
+          for (const sub of toDelete) {
+            const { error: deleteError } = await supabase
+              .from('push_subscriptions')
+              .delete()
+              .eq('id', sub.id);
+              
+            if (deleteError) {
+              console.error('Error deleting duplicate subscription:', deleteError);
+            } else {
+              deletedCount++;
+              console.log(`Deleted duplicate subscription: ${sub.device_name} (${sub.created_at})`);
+            }
+          }
+        }
+      }
+
+      console.log(`Cleanup complete. Deleted ${deletedCount} duplicate subscriptions.`);
+      
+      // Return summary
+      return {
+        totalBefore: subscriptions.length,
+        deletedCount,
+        totalAfter: subscriptions.length - deletedCount
+      };
     } catch (error) {
-      console.error('Error checking reminders:', error);
+      console.error('Error during device registration cleanup:', error);
     }
   }
 
-  // Handle notification clicks
-  handleNotificationClick(event) {
-    event.notification.close();
-    
-    if (event.action === 'complete') {
-      // Mark task as complete
-      if (event.notification.data?.taskId) {
-        tasksService.updateTask(event.notification.data.taskId, { completed: true });
+  // Get device registration summary for current user
+  async getDeviceRegistrationSummary() {
+    try {
+      const { supabase } = await import('../supabaseClient');
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        return { error: 'No authenticated user' };
       }
-    } else if (event.action === 'snooze') {
-      // Snooze for 15 minutes
-      if (event.notification.data?.taskId) {
-        const snoozeTime = new Date(Date.now() + 15 * 60 * 1000);
-        tasksService.setReminder(event.notification.data.taskId, snoozeTime.toISOString());
+
+      const { data: subscriptions, error } = await supabase
+        .from('push_subscriptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        return { error: error.message };
       }
-    } else {
-      // Open the app
-      clients.openWindow('/');
+
+      // Group by endpoint to identify duplicates
+      const endpointGroups = {};
+      subscriptions?.forEach(sub => {
+        const shortEndpoint = sub.endpoint.substring(0, 50) + '...';
+        if (!endpointGroups[shortEndpoint]) {
+          endpointGroups[shortEndpoint] = [];
+        }
+        endpointGroups[shortEndpoint].push(sub);
+      });
+
+      const duplicateEndpoints = Object.keys(endpointGroups).filter(
+        endpoint => endpointGroups[endpoint].length > 1
+      );
+
+      return {
+        totalSubscriptions: subscriptions?.length || 0,
+        uniqueEndpoints: Object.keys(endpointGroups).length,
+        duplicateEndpoints: duplicateEndpoints.length,
+        devices: subscriptions?.map(sub => ({
+          deviceName: sub.device_name,
+          created: sub.created_at,
+          endpoint: sub.endpoint.substring(0, 50) + '...'
+        })) || []
+      };
+    } catch (error) {
+      return { error: error.message };
     }
   }
 }
