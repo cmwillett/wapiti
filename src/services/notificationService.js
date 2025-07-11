@@ -399,6 +399,17 @@ class NotificationService {
     this.checkDueReminders();
   }
 
+  // Check for due reminders (placeholder - actual logic handled by browserReminderChecker)
+  async checkDueReminders() {
+    // This is a placeholder method that gets called by the interval
+    // The actual reminder checking logic is handled by browserReminderChecker
+    console.log('Reminder check triggered at:', new Date().toLocaleTimeString());
+    
+    // The real work is done by the browser reminder checker service
+    // which stores reminders in localStorage for the service worker
+    return true;
+  }
+
   // Stop the reminder checker
   stopReminderChecker() {
     if (this.checkInterval) {

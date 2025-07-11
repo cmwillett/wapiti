@@ -62,9 +62,9 @@ async function testMultiDeviceNotifications() {
     }
 
     // 5. Test notification service if available
-    if (typeof notificationService !== 'undefined') {
+    if (typeof window.notificationService !== 'undefined') {
       console.log('🔔 Testing notification service...');
-      const result = await notificationService.requestPermission();
+      const result = await window.notificationService.requestNotificationPermission();
       console.log('✅ Notification service result:', result);
     } else {
       console.log('⚠️ notificationService not available globally');
