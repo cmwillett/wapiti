@@ -117,22 +117,30 @@ async function checkDeviceRegistration() {
 }
 
 function getCurrentDeviceFingerprint() {
-  // Simple device fingerprinting (matches the one used in notificationService)
-  const platform = navigator.platform || 'Unknown';
+  // Use the same device naming logic as NotificationService
   const userAgent = navigator.userAgent || 'Unknown';
   
-  // Create a simple device identifier
-  let deviceType = 'Desktop';
-  if (/iPhone|iPad|iPod/.test(userAgent)) {
-    deviceType = 'iOS';
-  } else if (/Android/.test(userAgent)) {
-    deviceType = 'Android';
-  } else if (/Mobile/.test(userAgent)) {
-    deviceType = 'Mobile';
+  if (/Mobile|Android|iPhone|iPad/.test(userAgent)) {
+    if (/Android/.test(userAgent)) {
+      return 'Android Device';
+    } else if (/iPhone/.test(userAgent)) {
+      return 'iPhone';
+    } else if (/iPad/.test(userAgent)) {
+      return 'iPad';
+    } else {
+      return 'Mobile Device';
+    }
+  } else {
+    if (/Windows/.test(userAgent)) {
+      return 'Windows Desktop';
+    } else if (/Mac/.test(userAgent)) {
+      return 'Mac Desktop';
+    } else if (/Linux/.test(userAgent)) {
+      return 'Linux Desktop';
+    } else {
+      return 'Desktop';
+    }
   }
-  
-  const timestamp = new Date().toISOString().substring(0, 16); // YYYY-MM-DDTHH:MM
-  return `${deviceType} ${platform} ${timestamp}`;
 }
 
 // Auto-run on load
