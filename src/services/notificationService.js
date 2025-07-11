@@ -268,8 +268,7 @@ class NotificationService {
           p256dh: p256dh,
           auth: auth,
           user_agent: userAgent,
-          device_name: deviceName,
-          last_used: new Date().toISOString()
+          device_name: deviceName
         }, {
           onConflict: 'user_id,endpoint'
         });

@@ -5,6 +5,23 @@ console.log('🔔 Starting Multi-Device Notification Test...');
 
 async function testMultiDeviceNotifications() {
   try {
+    // Wait for supabase to be available
+    if (typeof window.supabase === 'undefined') {
+      console.log('⏳ Waiting for supabase to load...');
+      await new Promise(resolve => {
+        const checkSupabase = () => {
+          if (typeof window.supabase !== 'undefined') {
+            resolve();
+          } else {
+            setTimeout(checkSupabase, 100);
+          }
+        };
+        checkSupabase();
+      });
+    }
+
+    const supabase = window.supabase;
+    
     // 1. Check if we're authenticated
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {

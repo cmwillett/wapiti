@@ -5,6 +5,23 @@ console.log('📱 Device Registration Monitor Started');
 
 async function checkDeviceRegistration() {
   try {
+    // Wait for supabase to be available
+    if (typeof window.supabase === 'undefined') {
+      console.log('⏳ Waiting for supabase to load...');
+      await new Promise(resolve => {
+        const checkSupabase = () => {
+          if (typeof window.supabase !== 'undefined') {
+            resolve();
+          } else {
+            setTimeout(checkSupabase, 100);
+          }
+        };
+        checkSupabase();
+      });
+    }
+
+    const supabase = window.supabase;
+    
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {

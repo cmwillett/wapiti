@@ -5,6 +5,23 @@ console.log('🗄️ Database Setup Helper');
 
 async function setupPushSubscriptionsTable() {
   try {
+    // Wait for supabase to be available
+    if (typeof window.supabase === 'undefined') {
+      console.log('⏳ Waiting for supabase to load...');
+      await new Promise(resolve => {
+        const checkSupabase = () => {
+          if (typeof window.supabase !== 'undefined') {
+            resolve();
+          } else {
+            setTimeout(checkSupabase, 100);
+          }
+        };
+        checkSupabase();
+      });
+    }
+
+    const supabase = window.supabase;
+    
     console.log('🔍 Checking if push_subscriptions table exists...');
     
     // Test if table exists by trying to query it
@@ -81,6 +98,23 @@ async function setupPushSubscriptionsTable() {
 
 async function checkUserPreferencesTable() {
   try {
+    // Wait for supabase to be available  
+    if (typeof window.supabase === 'undefined') {
+      console.log('⏳ Waiting for supabase to load...');
+      await new Promise(resolve => {
+        const checkSupabase = () => {
+          if (typeof window.supabase !== 'undefined') {
+            resolve();
+          } else {
+            setTimeout(checkSupabase, 100);
+          }
+        };
+        checkSupabase();
+      });
+    }
+
+    const supabase = window.supabase;
+    
     console.log('🔍 Checking user_preferences table...');
     
     const { data, error } = await supabase
