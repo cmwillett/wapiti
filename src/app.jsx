@@ -5,7 +5,7 @@ import UserPreferences from './components/UserPreferences';
 import Login from './Login';
 import { supabase } from './supabaseClient';
 import { listsService, tasksService, subscriptionsService, debugService } from './services/supabaseService';
-import { registerNotifications, initializeNotifications } from './services/notificationService';
+import { initializeNotifications } from './services/notificationService';
 import { browserReminderChecker } from './services/browserReminderChecker';
 
 export default function App() {
@@ -33,8 +33,8 @@ export default function App() {
   useEffect(() => {
     if (user) {
       loadInitialData();
+      // Only call initializeNotifications - it handles permission request and service worker registration
       initializeNotifications();
-      registerNotifications();
     } else {
       setLists([]);
       setTasks([]);

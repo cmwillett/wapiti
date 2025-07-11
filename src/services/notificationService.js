@@ -9,6 +9,8 @@ class NotificationService {
     this.checkInterval = null;
     this.authChannel = null;
     this.reminderChannel = null;
+    this.subscriptionPromise = null; // Add lock for subscription process
+    this.initializationPromise = null; // Add lock for initialization process
     this.setupAuthChannel();
     console.log('NotificationService: Broadcast channels set up');
   }
@@ -82,8 +84,31 @@ class NotificationService {
   }
 
   async initializeNotifications() {
+    // Prevent multiple simultaneous initialization attempts
+    if (this.initializationPromise) {
+      console.log('Initialization already in progress, waiting...');
+      return await this.initializationPromise;
+    }
+
+    // Create a promise that we'll reuse for concurrent calls
+    this.initializationPromise = this._doInitializeNotifications();
+    
+    try {
+      const result = await this.initializationPromise;
+      return result;
+    } finally {
+      // Clear the promise so future calls can proceed
+      this.initializationPromise = null;
+    }
+  }
+
+  // Internal initialization logic (protected from concurrent calls)
+  async _doInitializeNotifications() {
+    console.log('NotificationService: Starting initialization...');
+    
     if ('Notification' in window) {
       this.permission = await Notification.requestPermission();
+      console.log('NotificationService: Permission granted:', this.permission);
     }
     
     // Register service worker
@@ -91,6 +116,8 @@ class NotificationService {
     
     // Start checking for due reminders every minute
     this.startReminderChecker();
+    
+    console.log('NotificationService: Initialization complete');
   }
 
   async requestNotificationPermission() {
@@ -175,21 +202,49 @@ class NotificationService {
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
+        console.log('NotificationService: Registering service worker...');
         const registration = await navigator.serviceWorker.register('/sw.js');
-        console.log('Service Worker registered:', registration);
+        console.log('NotificationService: Service Worker registered:', registration);
+        
+        // Wait for service worker to be ready before subscribing to push
+        await navigator.serviceWorker.ready;
+        console.log('NotificationService: Service Worker ready, subscribing to push...');
         
         // Subscribe to push notifications
         await this.subscribeToPush(registration);
         
         return registration;
       } catch (error) {
-        console.error('Service Worker registration failed:', error);
+        console.error('NotificationService: Service Worker registration failed:', error);
       }
     }
   }
 
   // Subscribe to push notifications
   async subscribeToPush(registration) {
+    // Prevent multiple simultaneous subscription attempts
+    if (this.subscriptionPromise) {
+      console.log('NotificationService: Subscription already in progress, waiting...');
+      return await this.subscriptionPromise;
+    }
+
+    console.log('NotificationService: Starting push subscription process...');
+    
+    // Create a promise that we'll reuse for concurrent calls
+    this.subscriptionPromise = this._doSubscribeToPush(registration);
+    
+    try {
+      const result = await this.subscriptionPromise;
+      console.log('NotificationService: Push subscription completed successfully');
+      return result;
+    } finally {
+      // Clear the promise so future calls can proceed
+      this.subscriptionPromise = null;
+    }
+  }
+
+  // Internal subscription logic (protected from concurrent calls)
+  async _doSubscribeToPush(registration) {
     if ('PushManager' in window) {
       try {
         // Check if we already have a valid subscription
@@ -229,8 +284,10 @@ class NotificationService {
         return subscription;
       } catch (error) {
         console.error('Push subscription failed:', error);
+        throw error;
       }
     }
+    return null;
   }
 
   // Validate if existing subscription is saved in database
