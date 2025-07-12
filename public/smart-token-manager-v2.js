@@ -215,19 +215,21 @@ class SmartTokenManager {
       // Generate consistent device name
       const deviceName = `${this.deviceType} Smart (${this.deviceId})`;
 
-      // Use upsert with endpoint as unique key to prevent duplicates
+      // Delete any existing subscription for this endpoint, then insert new one
+      await window.supabase
+        .from('push_subscriptions')
+        .delete()
+        .eq('endpoint', subscription.endpoint);
+
+      // Insert new subscription
       const { error } = await window.supabase
         .from('push_subscriptions')
-        .upsert({
+        .insert({
           user_id: userId,
           endpoint: subscription.endpoint,
           p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')))),
           auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')))),
-          device_name: deviceName,
-          device_id: this.deviceId,
-          last_refreshed: new Date().toISOString()
-        }, {
-          onConflict: 'endpoint'
+          device_name: deviceName
         });
 
       if (error) throw error;
