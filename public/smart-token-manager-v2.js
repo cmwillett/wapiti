@@ -453,7 +453,7 @@ class SmartTokenManager {
     this.statusIndicator.style.cssText = `
       position: fixed;
       top: 10px;
-      right: 10px;
+      right: 60px;
       z-index: 10000;
       width: 12px;
       height: 12px;
