@@ -120,16 +120,16 @@ function createSimpleRegistrationUI() {
           applicationServerKey: 'BJPVlwpCxnv6hdAsbgspbI1xcE7_LwhJvDV2ibZ4alQ38WSzFzN6xf-QyYN2FUOP-miBMRTitIdVPSGb1mjYWZU'
         });
 
-        // Save
-        await window.supabase
-          .from('push_subscriptions')
-          .insert({
-            user_id: user.id,
-            endpoint: subscription.endpoint,
-            p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')))),
-            auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')))),
-            device_name: `${deviceType} Manual (${new Date().toLocaleTimeString()})`
-          });
+// Save (upsert to avoid duplicate key errors)
+await window.supabase
+  .from('push_subscriptions')
+  .upsert({
+    user_id: user.id,
+    endpoint: subscription.endpoint,
+    p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')))),
+    auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')))),
+    device_name: `${deviceType} Manual (${new Date().toLocaleTimeString()})`
+  }, { onConflict: ['user_id', 'endpoint'] });
 
         updateStatus(`✅ ${deviceType} registered`, '#27ae60');
       }
