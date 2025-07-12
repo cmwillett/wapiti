@@ -122,7 +122,7 @@ class NotificationService {
     // Set up push notifications
     if (this.permission === 'granted' && this.registration) {
       console.log('NotificationService: Setting up push notifications...');
-      await this.subscribeToPushNotifications(this.registration);
+      await this.subscribeToPush(this.registration);
     }
     
     // Set up automatic token refresh for mobile devices
