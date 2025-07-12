@@ -47,13 +47,29 @@ function createMobileCleanupUI() {
           cleanupDiv.style.display = 'none';
         }, 3000);
       } else {
-        cleanupDiv.textContent = '❌ Error - Refresh page';
+        cleanupDiv.textContent = `❌ ${result.error}`;
         cleanupDiv.style.background = '#dc3545';
+        cleanupDiv.style.fontSize = '12px';
+        
+        // Show error for longer on mobile
+        setTimeout(() => {
+          cleanupDiv.textContent = '🔧 Fix Phone Notifications';
+          cleanupDiv.style.background = '#ff6b6b';
+          cleanupDiv.style.fontSize = '14px';
+        }, 5000);
       }
     } catch (error) {
       console.error('Cleanup error:', error);
-      cleanupDiv.textContent = '❌ Error - Refresh page';
+      cleanupDiv.textContent = `❌ ${error.message || 'Unknown error'}`;
       cleanupDiv.style.background = '#dc3545';
+      cleanupDiv.style.fontSize = '12px';
+      
+      // Show error for longer on mobile
+      setTimeout(() => {
+        cleanupDiv.textContent = '🔧 Fix Phone Notifications';
+        cleanupDiv.style.background = '#ff6b6b';
+        cleanupDiv.style.fontSize = '14px';
+      }, 5000);
     }
   };
   
@@ -70,13 +86,24 @@ function createMobileCleanupUI() {
 // Mobile cleanup function
 async function cleanupAndReregisterMobile() {
   try {
+    // Wait for services to be ready
     if (!window.supabase) {
-      throw new Error('Supabase not available');
+      // Wait up to 5 seconds for supabase to load
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (window.supabase) break;
+      }
+      if (!window.supabase) {
+        throw new Error('Supabase not loaded');
+      }
     }
 
     const { data: { user }, error: userError } = await window.supabase.auth.getUser();
-    if (userError || !user) {
-      throw new Error('User not authenticated');
+    if (userError) {
+      throw new Error(`Auth error: ${userError.message}`);
+    }
+    if (!user) {
+      throw new Error('Not authenticated');
     }
 
     console.log('🧹 Cleaning up invalid mobile tokens...');
@@ -88,19 +115,26 @@ async function cleanupAndReregisterMobile() {
       .eq('user_id', user.id);
 
     if (deleteError) {
-      throw new Error(`Delete error: ${deleteError.message}`);
+      throw new Error(`Delete failed: ${deleteError.message}`);
     }
 
     console.log('✅ Old tokens deleted');
 
-    // Force re-registration
-    if (window.notificationService) {
-      console.log('🔄 Re-initializing notifications...');
-      await window.notificationService.initialize();
-      console.log('✅ Mobile device re-registered!');
-    } else {
-      throw new Error('Notification service not available');
+    // Wait for notification service to be ready
+    if (!window.notificationService) {
+      // Wait up to 3 seconds for notification service
+      for (let i = 0; i < 6; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (window.notificationService) break;
+      }
+      if (!window.notificationService) {
+        throw new Error('Notification service not ready');
+      }
     }
+
+    console.log('🔄 Re-initializing notifications...');
+    await window.notificationService.initialize();
+    console.log('✅ Mobile device re-registered!');
 
     // Verify registration
     const { data: newTokens } = await window.supabase
@@ -119,7 +153,7 @@ async function cleanupAndReregisterMobile() {
     console.error('❌ Mobile cleanup error:', error);
     return { 
       success: false, 
-      error: error.message 
+      error: error.message || 'Unknown error'
     };
   }
 }
