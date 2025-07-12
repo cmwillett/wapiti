@@ -117,7 +117,7 @@ function createSimpleRegistrationUI() {
         // Create new
         const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: 'BNJzaJmEwNKNB8JCCgBl8jP5f4n0kXgKlY2kZFhQ4S5qJ2M9R7K3H1X4G8N6Q5F2A3D9'
+          applicationServerKey: 'BJPVlwpCxnv6hdAsbgspbI1xcE7_LwhJvDV2ibZ4alQ38WSzFzN6xf-QyYN2FUOP-miBMRTitIdVPSGb1mjYWZU'
         });
 
         // Save
