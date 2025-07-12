@@ -1,4 +1,4 @@
-// Edge Function using FCM V1 API (OAuth2 + Service Account)
+// Edge Function to check for due reminders and send notifications
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -254,7 +254,7 @@ async function sendPushNotification(task, userId, supabaseClient) {
     for (const subscription of subscriptions) {
       try {
         console.log(`Sending to device: ${subscription.device_name || 'Unknown device'}`);
-        const fcmResult = await sendFCMV1Notification(subscription, task);
+        const fcmResult = await sendFCMNotification(subscription, task);
         results.push(fcmResult);
         
         if (fcmResult.success) {
@@ -289,197 +289,134 @@ async function sendPushNotification(task, userId, supabaseClient) {
   }
 }
 
-// Get OAuth2 access token for FCM V1 API
-async function getAccessToken() {
+// Hybrid sendFCMNotification function that works for both desktop and mobile
+async function sendFCMNotification(subscription, task) {
   try {
-    // Get service account key from environment variable
-    const serviceAccountKey = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_KEY');
-    
-    if (!serviceAccountKey) {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY environment variable is required');
+    console.log(`Sending notification for task ${task.id}`);
+    console.log('Subscription data:', JSON.stringify(subscription, null, 2));
+
+    // Use the flat structure from your database
+    const endpoint = subscription.endpoint;
+    const p256dh = subscription.p256dh;
+    const auth = subscription.auth;
+
+    if (!endpoint) {
+      console.error('Subscription structure:', subscription);
+      throw new Error('Invalid subscription: missing endpoint');
     }
 
-    const serviceAccount = JSON.parse(serviceAccountKey);
-    
-    // Create JWT for Google OAuth2
-    const now = Math.floor(Date.now() / 1000);
-    const header = {
-      alg: 'RS256',
-      typ: 'JWT'
-    };
-    
-    const payload = {
-      iss: serviceAccount.client_email,
-      scope: 'https://www.googleapis.com/auth/firebase.messaging',
-      aud: 'https://oauth2.googleapis.com/token',
-      iat: now,
-      exp: now + 3600
-    };
+    console.log(`Endpoint: ${endpoint.substring(0, 50)}...`);
 
-    // Create unsigned token
-    const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-    const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-    const unsignedToken = `${headerB64}.${payloadB64}`;
+    // Detect if this is a mobile device based on user_agent or device_name
+    const isMobile = (subscription.user_agent && (
+      subscription.user_agent.includes('Mobile') || 
+      subscription.user_agent.includes('Android') || 
+      subscription.user_agent.includes('iPhone')
+    )) || (subscription.device_name && subscription.device_name.includes('Android'));
 
-    // Sign the token with the private key
-    const privateKey = await importPrivateKey(serviceAccount.private_key);
-    const signature = await signJWT(unsignedToken, privateKey);
-    const jwt = `${unsignedToken}.${signature}`;
+    console.log(`Device type: ${isMobile ? 'Mobile' : 'Desktop'}`);
 
-    // Exchange JWT for access token
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: jwt
-      })
+    // Create push payload
+    const payload = JSON.stringify({
+      title: '📝 Task Reminder',
+      body: `Don't forget: ${task.text}`,
+      data: {
+        taskId: task.id.toString(),
+        action: 'task-reminder',
+        icon: '/icons/icon-192x192.png',
+        badge: '/favicon.svg',
+        tag: `task-${task.id}`,
+        requireInteraction: true
+      }
     });
 
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      throw new Error(`Failed to get access token: ${tokenResponse.status} ${errorText}`);
+    console.log('Push payload:', payload);
+
+    if (isMobile) {
+      // For mobile devices: Use simple FCM format (what was working)
+      return await sendMobileNotification(endpoint, payload);
+    } else {
+      // For desktop: Try multiple approaches
+      return await sendDesktopNotification(endpoint, p256dh, auth, payload);
     }
 
-    const tokenData = await tokenResponse.json();
-    return tokenData.access_token;
-
   } catch (error) {
-    console.error('Error getting access token:', error);
-    throw error;
+    console.error('Notification error:', error);
+    return { success: false, error: error.message };
   }
 }
 
-// Helper function to import private key
-async function importPrivateKey(privateKeyPem) {
-  // Remove PEM header/footer and whitespace
-  const pemContents = privateKeyPem
-    .replace(/-----BEGIN PRIVATE KEY-----/, '')
-    .replace(/-----END PRIVATE KEY-----/, '')
-    .replace(/\s/g, '');
-
-  // Convert base64 to ArrayBuffer
-  const keyData = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-
-  // Import the key
-  return await crypto.subtle.importKey(
-    'pkcs8',
-    keyData,
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256'
-    },
-    false,
-    ['sign']
-  );
-}
-
-// Helper function to sign JWT
-async function signJWT(data, privateKey) {
-  const encoder = new TextEncoder();
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    privateKey,
-    encoder.encode(data)
-  );
-
-  // Convert to base64url
-  const signatureArray = new Uint8Array(signature);
-  const signatureB64 = btoa(String.fromCharCode(...signatureArray))
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-
-  return signatureB64;
-}
-
-// Extract registration token from FCM endpoint
-function extractRegistrationToken(endpoint) {
-  // FCM endpoints look like: https://fcm.googleapis.com/fcm/send/REGISTRATION_TOKEN
-  const match = endpoint.match(/\/fcm\/send\/(.+)$/);
-  return match ? match[1] : null;
-}
-
-// Send notification using FCM V1 API
-async function sendFCMV1Notification(subscription, task) {
+// Universal notification function - works for both mobile and desktop FCM endpoints
+async function sendMobileNotification(endpoint, payload) {
+  console.log('📱 Sending FCM notification (works for both mobile and desktop)');
+  
   try {
-    console.log(`Sending FCM V1 notification for task ${task.id}`);
+    // Get FCM server key from environment
+    const fcmServerKey = Deno.env.get('FCM_SERVER_KEY');
     
-    // Get access token
-    const accessToken = await getAccessToken();
-    
-    // Extract registration token from endpoint
-    const registrationToken = extractRegistrationToken(subscription.endpoint);
-    if (!registrationToken) {
-      throw new Error('Could not extract registration token from endpoint');
+    if (!fcmServerKey) {
+      return { 
+        success: false, 
+        error: `FCM_SERVER_KEY environment variable required. All your devices use FCM endpoints which need Firebase authentication.` 
+      };
     }
 
-    // Get Firebase project ID
-    const projectId = Deno.env.get('FIREBASE_PROJECT_ID');
-    if (!projectId) {
-      throw new Error('FIREBASE_PROJECT_ID environment variable is required');
-    }
+    // Debug: Log key info (but not the full key for security)
+    console.log(`FCM server key present: ${fcmServerKey ? 'Yes' : 'No'}`);
+    console.log(`FCM server key length: ${fcmServerKey ? fcmServerKey.length : 0}`);
+    console.log(`FCM server key starts with: ${fcmServerKey ? fcmServerKey.substring(0, 10) + '...' : 'N/A'}`);
 
-    // Create FCM V1 payload
-    const message = {
-      message: {
-        token: registrationToken,
-        notification: {
-          title: '📝 Task Reminder',
-          body: `Don't forget: ${task.text}`
-        },
-        data: {
-          taskId: task.id.toString(),
-          action: 'task-reminder'
-        },
-        webpush: {
-          headers: {
-            'TTL': '86400'
-          },
-          notification: {
-            title: '📝 Task Reminder',
-            body: `Don't forget: ${task.text}`,
-            icon: '/icons/icon-192x192.png',
-            badge: '/favicon.svg',
-            tag: `task-${task.id}`,
-            requireInteraction: true,
-            data: {
-              taskId: task.id.toString(),
-              action: 'task-reminder'
-            }
-          }
-        }
-      }
+    // Send with FCM server key (works for both mobile and desktop FCM endpoints)
+    console.log('Using FCM server key for notification');
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `key=${fcmServerKey}`,
+      'TTL': '86400'
     };
+    
+    console.log('Request headers:', JSON.stringify({
+      'Content-Type': headers['Content-Type'],
+      'Authorization': `key=${fcmServerKey.substring(0, 10)}...`,
+      'TTL': headers['TTL']
+    }));
 
-    console.log('FCM V1 payload:', JSON.stringify(message, null, 2));
-
-    // Send to FCM V1 API
-    const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+    const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
-      body: JSON.stringify(message)
+      headers,
+      body: payload
     });
 
     if (response.ok) {
-      const result = await response.json();
-      console.log('✅ FCM V1 notification sent successfully:', result);
-      return { success: true, messageId: result.name };
+      console.log('✅ FCM notification sent successfully');
+      return { success: true, messageId: `fcm-${Date.now()}` };
     } else {
+      console.error('❌ FCM notification failed:', response.status, response.statusText);
       const errorText = await response.text();
-      console.error('❌ FCM V1 notification failed:', response.status, response.statusText, errorText);
-      return { success: false, error: `FCM V1 error: ${response.status} ${response.statusText}` };
+      console.error('Error details:', errorText);
+      
+      // Additional debugging for 401 errors
+      if (response.status === 401) {
+        console.error('🔍 401 Debugging info:');
+        console.error('- FCM key exists:', !!fcmServerKey);
+        console.error('- FCM key length:', fcmServerKey?.length);
+        console.error('- Authorization header being sent:', `key=${fcmServerKey?.substring(0, 10)}...`);
+        console.error('- Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())));
+      }
+      
+      return { success: false, error: `FCM push error: ${response.status} ${response.statusText}` };
     }
-
   } catch (error) {
-    console.error('FCM V1 notification error:', error);
+    console.error('FCM notification error:', error);
     return { success: false, error: error.message };
   }
+}
+
+// Desktop notification - now also uses FCM since all your endpoints are FCM
+async function sendDesktopNotification(endpoint, p256dh, auth, payload) {
+  console.log('🖥️ Sending desktop FCM notification');
+  
+  // Since your desktop endpoints are also FCM, use the same FCM approach
+  return await sendMobileNotification(endpoint, payload);
 }
 
 async function sendSMSNotification(task, phoneNumber, supabaseClient) {

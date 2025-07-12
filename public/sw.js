@@ -14,7 +14,27 @@ self.addEventListener('activate', (event) => {
 
 // Handle push messages from the server
 self.addEventListener('push', (event) => {
-  console.log('SW: Push event received in service worker:', event);
+  console.log('SW: 🔔 Push event received in service worker:', event);
+  console.log('SW: Event details:', {
+    type: event.type,
+    bubbles: event.bubbles,
+    cancelable: event.cancelable,
+    data: event.data ? 'present' : 'missing'
+  });
+  
+  // If debugging is enabled, send info to main thread
+  if (self.pushDebugEnabled && self.clients) {
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'PUSH_EVENT_DEBUG',
+          eventType: 'push',
+          hasData: !!event.data,
+          timestamp: new Date().toISOString()
+        });
+      });
+    });
+  }
   
   // Try to get data from the push event first
   let pushData = null;
@@ -26,33 +46,43 @@ self.addEventListener('push', (event) => {
       // Try to parse as JSON
       try {
         pushData = JSON.parse(rawData);
-        console.log('SW: Parsed push data:', pushData);
+        console.log('SW: ✅ Parsed push data:', pushData);
       } catch (parseError) {
-        console.log('SW: Failed to parse push data as JSON:', parseError);
+        console.log('SW: ⚠️ Failed to parse push data as JSON, using as text:', parseError);
+        // If it's not JSON, treat it as plain text
+        pushData = { body: rawData };
       }
+    } else {
+      console.log('SW: ⚠️ No data in push event, will show generic notification');
     }
   } catch (error) {
-    console.log('SW: No valid data in push event:', error);
+    console.log('SW: ❌ Error extracting push data:', error);
   }
   
+  console.log('SW: About to call fetchAndShowReminder with data:', pushData);
+  
   event.waitUntil(
-    fetchAndShowReminder(pushData)
+    fetchAndShowReminder(pushData).catch(error => {
+      console.error('SW: ❌ fetchAndShowReminder failed:', error);
+      // Show a fallback notification
+      return showGenericNotification();
+    })
   );
 });
 
 async function fetchAndShowReminder(pushData = null) {
   try {
-    console.log('SW: Looking for reminder data...');
+    console.log('SW: 🔍 fetchAndShowReminder called with data:', pushData);
     
     // Check if we have push data in the new data-only format
     if (pushData && pushData.data) {
-      console.log('SW: Using data-only push format:', pushData.data);
+      console.log('SW: 📦 Using data-only push format:', pushData.data);
       
       const data = pushData.data;
-      await self.registration.showNotification(data.title || '📝 Task Reminder', {
+      const notificationOptions = {
         body: data.body || 'You have a task reminder',
-        icon: data.icon || '/favicon.svg',
-        badge: data.badge || '/favicon.svg',
+        icon: '/icons/icon-192x192.png', // Use PNG icon for better compatibility
+        badge: '/favicon.svg',
         tag: data.tag || 'task-reminder',
         requireInteraction: true,
         silent: false,
@@ -65,21 +95,25 @@ async function fetchAndShowReminder(pushData = null) {
           taskId: parseInt(data.taskId) || 0,
           action: data.action || 'task-reminder'
         }
-      });
+      };
+      
+      console.log('SW: 🔔 About to show notification with options:', notificationOptions);
+      
+      await self.registration.showNotification(data.title || '📝 Task Reminder', notificationOptions);
 
-      console.log(`SW: Showed notification using data-only format: ${data.body}`);
+      console.log(`SW: ✅ Showed notification using data-only format: ${data.body}`);
       return;
     }
     
     // Check if we have any push data with reminder information directly
     if (pushData && (pushData.taskId || pushData.body || pushData.text)) {
-      console.log('SW: Using direct push data:', pushData);
+      console.log('SW: 📝 Using direct push data:', pushData);
       
       const taskText = pushData.body || pushData.text || 'You have a task reminder';
       
-      await self.registration.showNotification('📝 Task Reminder', {
+      const notificationOptions = {
         body: taskText,
-        icon: '/favicon.svg',
+        icon: '/icons/icon-192x192.png',
         badge: '/favicon.svg',
         tag: `task-${pushData.taskId || 'unknown'}`,
         requireInteraction: true,
@@ -93,19 +127,53 @@ async function fetchAndShowReminder(pushData = null) {
           taskId: parseInt(pushData.taskId) || 0,
           action: 'task-reminder'
         }
-      });
+      };
+      
+      console.log('SW: 🔔 About to show notification with options:', notificationOptions);
 
-      console.log(`SW: Showed notification using direct push data: ${taskText}`);
+      await self.registration.showNotification('📝 Task Reminder', notificationOptions);
+
+      console.log(`SW: ✅ Showed notification using direct push data: ${taskText}`);
+      return;
+    }
+    
+    // Check if we have push data in the FCM notification format
+    if (pushData && pushData.notification) {
+      console.log('SW: 📱 Using FCM notification format:', pushData);
+      
+      const notificationOptions = {
+        body: pushData.notification.body || 'You have a task reminder',
+        icon: '/icons/icon-192x192.png',
+        badge: '/favicon.svg',
+        tag: pushData.data?.taskId ? `task-${pushData.data.taskId}` : 'fcm-notification',
+        requireInteraction: true,
+        silent: false,
+        vibrate: [200, 100, 200],
+        actions: [
+          { action: 'complete', title: 'Mark Complete' },
+          { action: 'snooze', title: 'Snooze 15 min' }
+        ],
+        data: {
+          taskId: parseInt(pushData.data?.taskId) || 0,
+          action: 'task-reminder'
+        }
+      };
+      
+      console.log('SW: 🔔 About to show FCM notification with options:', notificationOptions);
+
+      await self.registration.showNotification(pushData.notification.title || '📝 Task Reminder', notificationOptions);
+
+      console.log('SW: ✅ Showed notification using FCM notification format');
       return;
     }
     
     // Check if we have push data in the old notification format
     if (pushData && pushData.title && pushData.body) {
-      console.log('SW: Using notification push format:', pushData);
+      console.log('SW: 📄 Using notification push format:', pushData);
       
-      await self.registration.showNotification(pushData.title, {
+      const notificationOptions = {
         body: pushData.body,
-        icon: pushData.icon || '/favicon.svg',
+        icon: pushData.icon || '/icons/icon-192x192.png',
         badge: pushData.badge || '/favicon.svg',
         tag: pushData.tag || 'task-reminder',
         requireInteraction: true,
@@ -118,9 +186,13 @@ async function fetchAndShowReminder(pushData = null) {
         data: pushData.data || {
           action: 'task-reminder'
         }
-      });
+      };
+      
+      console.log('SW: 🔔 About to show notification with options:', notificationOptions);
 
-      console.log('SW: Showed notification using notification format');
+      await self.registration.showNotification(pushData.title, notificationOptions);
+
+      console.log('SW: ✅ Showed notification using notification format');
       return;
     }
     
@@ -388,11 +460,11 @@ async function getFromIndexedDB(key) {
 }
 
 function showGenericNotification() {
-  console.log('SW: Showing enhanced generic notification with more details');
+  console.log('SW: 🔔 Showing enhanced generic notification with more details');
   
-  return self.registration.showNotification('📝 Task Reminder', {
+  const notificationOptions = {
     body: 'You have a task reminder! Check the app for details.',
-    icon: '/favicon.svg',
+    icon: '/icons/icon-192x192.png',
     badge: '/favicon.svg',
     tag: 'reminder',
     requireInteraction: true,
@@ -405,7 +477,11 @@ function showGenericNotification() {
     data: {
       action: 'generic-reminder'
     }
-  });
+  };
+  
+  console.log('SW: 🔔 About to show generic notification with options:', notificationOptions);
+  
+  return self.registration.showNotification('📝 Task Reminder', notificationOptions);
 }
 
 // Handle notification clicks
@@ -570,6 +646,23 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       fetchAndShowReminder(event.data.data)
     );
+  } else if (event.data.type === 'simulate-real-push') {
+    console.log('SW: Simulating real FCM push event');
+    // Parse the push data as if it came from a real push event
+    try {
+      const pushData = JSON.parse(event.data.pushData);
+      console.log('SW: Parsed real push simulation data:', pushData);
+      event.waitUntil(
+        fetchAndShowReminder(pushData)
+      );
+    } catch (error) {
+      console.error('SW: Failed to parse real push simulation data:', error);
+    }
+  } else if (event.data.type === 'ENABLE_PUSH_DEBUG') {
+    console.log('SW: Push debugging enabled');
+    self.pushDebugEnabled = true;
+  } else {
+    console.log('SW: Unknown message type:', event.data.type);
   }
 });
 
