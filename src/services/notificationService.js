@@ -119,6 +119,15 @@ class NotificationService {
     // Start checking for due reminders every minute
     this.startReminderChecker();
     
+    // Set up push notifications
+    if (this.permission === 'granted' && this.registration) {
+      console.log('NotificationService: Setting up push notifications...');
+      await this.subscribeToPushNotifications(this.registration);
+    }
+    
+    // Set up automatic token refresh for mobile devices
+    this.setupTokenRefresh();
+    
     console.log('NotificationService: Initialization complete');
   }
 
@@ -629,6 +638,87 @@ class NotificationService {
     } catch (error) {
       return { error: error.message };
     }
+  }
+
+  // Set up automatic token refresh for mobile devices
+  setupTokenRefresh() {
+    if ('serviceWorker' in navigator) {
+      // Listen for push subscription changes
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+          console.log('NotificationService: Push subscription changed, refreshing...');
+          this.handleTokenRefresh();
+        }
+      });
+
+      // Set up periodic token validation for mobile devices
+      if (this.isMobileDevice()) {
+        console.log('NotificationService: Setting up mobile token refresh');
+        this.setupMobileTokenRefresh();
+      }
+    }
+  }
+
+  // Handle token refresh when FCM tokens become invalid
+  async handleTokenRefresh() {
+    try {
+      console.log('NotificationService: Handling token refresh...');
+      
+      // Clear current subscription state
+      this.currentSubscription = null;
+      this.isSubscribed = false;
+      
+      // Re-initialize notifications with fresh tokens
+      await this.initializeNotifications();
+      console.log('NotificationService: Token refresh completed');
+    } catch (error) {
+      console.error('NotificationService: Token refresh failed:', error);
+    }
+  }
+
+  // Set up mobile-specific token refresh
+  setupMobileTokenRefresh() {
+    // Check token validity every 5 minutes on mobile
+    setInterval(async () => {
+      await this.validateMobileToken();
+    }, 5 * 60 * 1000);
+
+    // Also check when app comes back to foreground
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        console.log('NotificationService: App visible, checking mobile token...');
+        setTimeout(() => this.validateMobileToken(), 1000);
+      }
+    });
+  }
+
+  // Validate mobile token and refresh if needed
+  async validateMobileToken() {
+    if (!this.isMobileDevice() || !this.currentSubscription) {
+      return;
+    }
+
+    try {
+      console.log('NotificationService: Validating mobile token...');
+      
+      // Check if subscription is still valid
+      const isValid = await this.validateExistingSubscription(this.currentSubscription);
+      
+      if (!isValid) {
+        console.log('NotificationService: Mobile token invalid, refreshing...');
+        await this.handleTokenRefresh();
+      } else {
+        console.log('NotificationService: Mobile token is valid');
+      }
+    } catch (error) {
+      console.error('NotificationService: Mobile token validation failed:', error);
+    }
+  }
+
+  // Check if current device is mobile
+  isMobileDevice() {
+    const userAgent = navigator.userAgent;
+    return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
   }
 }
 
