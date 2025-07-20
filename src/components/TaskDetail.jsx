@@ -17,18 +17,18 @@ import { CKEditor } from '@ckeditor/ckeditor5-react';
 import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
 import Paper from '@mui/material/Paper';
 
-const TaskDetail = ({ task, onClose, onSave }) => {
-  const [reminder, setReminder] = useState(task?.reminder ? dayjs(task.reminder) : null);
-  const [notes, setNotes] = useState(task?.notes || "");
+const TaskDetail = ({ task, details, onClose, onSave }) => {
+  const [reminder, setReminder] = useState(details?.reminder ? dayjs(details.reminder) : (task?.reminder ? dayjs(task.reminder) : null));
+  const [notes, setNotes] = useState(details?.notes ?? task?.notes ?? "");
   const [title, setTitle] = useState(task?.title || "");
   const [dirty, setDirty] = useState(false);
 
   React.useEffect(() => {
     setTitle(task?.title || "");
-    setNotes(task?.notes || "");
-    setReminder(task?.reminder ? dayjs(task.reminder) : null);
+    setNotes(details?.notes ?? task?.notes ?? "");
+    setReminder(details?.reminder ? dayjs(details.reminder) : (task?.reminder ? dayjs(task.reminder) : null));
     setDirty(false);
-  }, [task]);
+  }, [task, details]);
 
   return (
     <Card variant="outlined" sx={{ m: 2, minWidth: 320, maxWidth: 480, flex: 1 }}>
@@ -157,7 +157,7 @@ const TaskDetail = ({ task, onClose, onSave }) => {
                 }
               }
               if (onSave) {
-                onSave(savedTask);
+                onSave(task.id, { notes, reminder: reminder ? reminder.toISOString() : null });
               }
             } catch (err) {
               console.error('Unexpected error:', err);

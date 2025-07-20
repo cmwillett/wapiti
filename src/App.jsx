@@ -31,6 +31,7 @@ import ShareIcon from "@mui/icons-material/Share";
 
 import TaskList from "./components/TaskList";
 import TaskDetail from "./components/TaskDetail";
+import Auth from "./components/Auth";
 
 
 
@@ -47,6 +48,45 @@ function QuickAddTask() {
 }
 
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [editTaskIdx, setEditTaskIdx] = useState(null);
+  const [selectedList, setSelectedList] = useState(0);
+  const [lists, setLists] = useState([]);
+  const [editListIdx, setEditListIdx] = useState(null);
+  const [editListValue, setEditListValue] = useState("");
+  const [tasks, setTasks] = useState([]);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedTaskDetails, setSelectedTaskDetails] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [addingList, setAddingList] = useState(false);
+  const [newListValue, setNewListValue] = useState("");
+
+  // Handler to close the task details panel
+  const handleDetailClose = () => {
+    setShowDetails(false);
+    setSelectedTask(null);
+  };
+
+  // Handler to log out
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  // Check for existing session on mount
+  React.useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUser(session.user);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    return () => {
+      listener?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
   // Handler to mark a task as complete/incomplete
   const handleTaskComplete = async (task, completed) => {
     if (!task?.id) return;
@@ -61,337 +101,329 @@ export default function App() {
       setTasks(tasks => tasks.map(t => t.id === task.id ? { ...t, completed } : t));
     }
   };
-  // Expose handler for TaskList
-  window.onTaskComplete = handleTaskComplete;
-  const [showDetails, setShowDetails] = useState(false);
-  // ...existing code...
-  // Example tasks for the selected list
-  const [editTaskIdx, setEditTaskIdx] = useState(null);
-  // Delete a task and its details from Supabase
-  const handleDeleteTask = async (id) => {
-    if (!id) return;
-    // Delete details
-    await supabase.from('task_details').delete().eq('task_id', id);
-    // Delete task
-    await supabase.from('tasks').delete().eq('id', id);
-    // Update UI
-    setTasks(tasks => tasks.filter(task => task.id !== id));
-    setSelectedTask(null);
-    setDetailOpen(false);
-  };
-  // ...existing code...
-  // Delete a list and its tasks/details from Supabase
-  const handleDeleteList = async (idx) => {
-    const list = lists[idx];
-    if (!list?.id) return;
-    // Delete all tasks for this list
-    const { data: tasksData } = await supabase
-      .from('tasks')
-      .select('id')
-      .eq('list_id', list.id);
-    if (tasksData && tasksData.length > 0) {
-      for (const task of tasksData) {
-        await supabase.from('task_details').delete().eq('task_id', task.id);
-      }
-      await supabase.from('tasks').delete().eq('list_id', list.id);
-    }
-    await supabase.from('lists').delete().eq('id', list.id);
-    // Update UI synchronously
-    setLists(prevLists => prevLists.filter((_, i) => i !== idx));
-    setSelectedList(0);
-    setTasks([]);
-  };
-  const [selectedList, setSelectedList] = useState(0);
-  const [lists, setLists] = useState([]);
-  const [editListIdx, setEditListIdx] = useState(null);
-  const [editListValue, setEditListValue] = useState("");
-  // Add new list
-  const handleAddList = async () => {
-    // Insert new list into Supabase with a generated UUID and correct field name
-    const newList = { id: uuidv4(), name: "New List" };
+  // Handler to add a new list (inline input)
+  const handleAddListSave = async () => {
+    if (!newListValue.trim()) return;
     const { data, error } = await supabase
       .from('lists')
-      .insert(newList)
+      .insert([{ name: newListValue.trim(), user_id: user?.id }])
       .select();
     if (data && data[0]) {
       setLists(lists => [...lists, data[0]]);
-      setEditListIdx(lists.length);
-      setEditListValue("New List");
-      setSelectedList(lists.length);
-      setTasks([]); // Reset tasks for new list
+      setAddingList(false);
+      setNewListValue("");
+    } else if (error) {
+      alert("Error adding list: " + error.message);
     }
   };
-  // Load lists from Supabase on mount
-  React.useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from('lists')
-        .select('*');
-      if (data) setLists(data);
-    })();
-  }, []);
-
-  // Edit list name
-  const handleEditListClick = (idx, title) => {
-    setEditListIdx(idx);
-    setEditListValue(title);
+  const handleAddListCancel = () => {
+    setAddingList(false);
+    setNewListValue("");
   };
-  const handleEditListSave = async (idx) => {
-    const list = lists[idx];
-    if (!list) return;
-    // Update list name in Supabase
-    const { data, error } = await supabase
-      .from('lists')
-      .update({ name: editListValue })
-      .eq('id', list.id)
-      .select();
-    if (data && data[0]) {
-      setLists(lists => lists.map((l, i) => i === idx ? data[0] : l));
-    } else {
-      setLists(lists => lists.map((l, i) => i === idx ? { ...l, name: editListValue } : l));
-    }
-    setEditListIdx(null);
-  };
-
-  // Example tasks for the selected list
-  const [tasks, setTasks] = useState([]);
-  // Handler to update a task's name
-  const handleTaskNameChange = async (id, newTitle) => {
-    // Update task title in Supabase
-    const { data, error } = await supabase
-      .from('tasks')
-      .update({ title: newTitle })
-      .eq('id', id)
-      .select();
-    if (data && data[0]) {
-      setTasks(tasks => tasks.map(task =>
-        task.id === id ? data[0] : task
-      ));
-    } else {
-      setTasks(tasks => tasks.map(task =>
-        task.id === id ? { ...task, title: newTitle } : task
-      ));
-    }
-  }
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-
-  // When a task is clicked, open the detail dialog
+    // Handler to select a task and show details
   const handleTaskClick = async (task) => {
-    // Load details from Supabase for this task
+    setSelectedTask(task);
+    setShowDetails(true);
     if (task?.id) {
-      const { data: detailDataArr, error } = await supabase
+      const { data, error } = await supabase
         .from('task_details')
         .select('*')
-        .eq('task_id', task.id);
-      if (detailDataArr && detailDataArr.length > 0) {
-        const detailData = detailDataArr[0];
-        setSelectedTask({ ...task, notes: detailData.notes, reminder: detailData.reminder, detailId: detailData.id });
+        .eq('task_id', task.id)
+        .single();
+      if (data) {
+        setSelectedTaskDetails(data);
       } else {
-        setSelectedTask({ ...task, notes: '', reminder: '', detailId: null });
+        setSelectedTaskDetails(null);
       }
     } else {
-      setSelectedTask(task);
-    }
-    setDetailOpen(true);
-    setShowDetails(true);
-  };
-
-  // When details are saved, reload from Supabase
-  const handleDetailSave = async (updatedTask) => {
-    if (updatedTask?.id) {
-      // Reload details from Supabase
-      const { data: detailDataArr, error } = await supabase
-        .from('task_details')
-        .select('*')
-        .eq('task_id', updatedTask.id);
-      let detailData = detailDataArr && detailDataArr.length > 0 ? detailDataArr[0] : null;
-      // Update the task in the tasks array
-      setTasks(tasks => tasks.map(task =>
-        task.id === updatedTask.id
-          ? { ...task, title: updatedTask.title, notes: detailData?.notes || '', reminder: detailData?.reminder || '', detailId: detailData?.id || null }
-          : task
-      ));
-      setSelectedTask({ ...updatedTask, notes: detailData?.notes || '', reminder: detailData?.reminder || '', detailId: detailData?.id || null });
+      setSelectedTaskDetails(null);
     }
   };
-
-  const handleDetailClose = () => {
-    setDetailOpen(false);
-    setSelectedTask(null);
+    // Handler to change a task's name
+  const handleTaskNameChange = async (taskId, newName) => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ title: newName })
+      .eq('id', taskId)
+      .select();
+    if (data && data[0]) {
+      setTasks(tasks => tasks.map(t => t.id === taskId ? data[0] : t));
+    } else if (error) {
+      alert("Error updating task name: " + error.message);
+    }
   };
+    // Handler to delete a task
+  const handleDeleteTask = async (taskId) => {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId);
+    if (!error) {
+      setTasks(tasks => tasks.filter(t => t.id !== taskId));
+    } else {
+      alert("Error deleting task: " + error.message);
+    }
+  };
+    // Handler to save task details (notes, reminder, etc)
+  const handleDetailSave = async (taskId, details) => {
+    const { data, error } = await supabase
+      .from('task_details')
+      .upsert({ ...details, task_id: taskId }, { onConflict: ['task_id'] })
+      .select();
+    if (data && data[0]) {
+      setSelectedTaskDetails(data[0]);
+    } else if (error) {
+      alert("Error saving task details: " + error.message);
+    }
+  };
+  // Expose handler for TaskList
+  window.onTaskComplete = handleTaskComplete;
+
+  // ...existing code...
+
+  // Load tasks for selected list whenever lists or selectedList change
+  React.useEffect(() => {
+    const loadTasks = async () => {
+      const listId = lists[selectedList]?.id;
+      if (listId) {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('list_id', listId);
+        setTasks(data || []);
+      } else {
+        setTasks([]);
+      }
+    };
+    if (lists.length > 0) {
+      loadTasks();
+    }
+    setEditTaskIdx(null);
+  }, [user, lists, selectedList]);
 
   return (
-    <Box sx={{ display: 'flex', bgcolor: '#424242', minHeight: '100vh' }}>
-      {/* Lists Section */}
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: 240,
-          flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { width: 240, boxSizing: 'border-box', bgcolor: '#b9fbc0', color: '#222' },
-        }}
-      >
-        <Toolbar />
-        <Box sx={{ overflow: 'auto' }}>
-          <List>
-            {lists.map((list, idx) => (
-              <ListItem key={idx} disablePadding>
-                <ListItemButton
-                  selected={selectedList === idx}
-                  onClick={async () => {
-                    setSelectedList(idx);
-                    // Load tasks for this list from Supabase
-                    const listId = lists[idx]?.id;
-                    if (listId) {
-                      const { data, error } = await supabase
-                        .from('tasks')
-                        .select('*')
-                        .eq('list_id', listId);
-                      setTasks(data || []);
-                    } else {
-                      setTasks([]);
-                    }
-                  }}
-                  sx={selectedList === idx ? {
-                    bgcolor: '#34c759 !important',
-                    color: '#222',
-                    borderRadius: '6px',
-                    mx: 1,
-                    '&:hover': { bgcolor: '#28a745 !important' }
-                  } : {}}
-                >
-                  {editListIdx === idx ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                      <TextField
-                        value={editListValue}
-                        onChange={e => setEditListValue(e.target.value)}
-                        size="small"
-                        autoFocus
-                        fullWidth
-                        onClick={e => e.stopPropagation()}
-                        onDoubleClick={e => e.stopPropagation()}
-                      />
-                      <IconButton size="small" sx={{ ml: 1 }} onClick={e => { e.stopPropagation(); handleEditListSave(idx); }}>
-                        <CheckIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  ) : (
-                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                      <ListItemText primary={list.name} />
-                      <IconButton size="small" onClick={e => { e.stopPropagation(); handleEditListClick(idx, list.name); }}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton size="small" color="error" sx={{ ml: 1 }} onClick={e => { e.stopPropagation(); handleDeleteList(idx); }}>
-                        {/* Delete icon */}
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                      </IconButton>
-                    </Box>
-                  )}
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
-          <Divider sx={{ bgcolor: '#636e72' }} />
-          <List>
-            <ListItem disablePadding>
-              <ListItemButton onClick={handleAddList}>
-                <AddIcon sx={{ mr: 1 }} />
-                <ListItemText primary="Add new list" />
-              </ListItemButton>
-            </ListItem>
-          </List>
-        </Box>
-      </Drawer>
-      {/* Tasks Section */}
-      <Box sx={{ flexGrow: 1, p: 0, minWidth: 320, maxWidth: 480, bgcolor: '#fff' }}>
-        <AppBar position="static" sx={{ bgcolor: "#b9fbc0", color: "#222" }}>
-          <Toolbar>
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>
-              {lists[selectedList]?.name || "No List Selected"}
+    !user ? (
+      <Auth onLogin={setUser} />
+    ) : (
+      <Box sx={{ display: 'flex', bgcolor: '#424242', minHeight: '100vh', position: 'relative' }}>
+        {/* Lists Section */}
+        <Drawer
+          variant="permanent"
+          sx={{
+            width: 240,
+            flexShrink: 0,
+            [`& .MuiDrawer-paper`]: { width: 240, boxSizing: 'border-box', bgcolor: '#b9fbc0', color: '#222' },
+          }}
+        >
+          {/* User Info in Sidebar Header */}
+          <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            bgcolor: '#b9fbc0',
+            px: 2,
+            py: 1.5,
+            borderBottom: '1px solid #34c759',
+            minHeight: 48
+          }}>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', color: '#222', mb: 1 }}>
+              {user?.email || 'Unknown user'}
             </Typography>
-            <IconButton color="inherit">
-              <SearchIcon />
-            </IconButton>
-            <IconButton color="inherit">
-              <ShareIcon />
-            </IconButton>
-            <IconButton color="inherit">
-              <MoreVertIcon />
-            </IconButton>
-          </Toolbar>
-        </AppBar>
-        {/* Incomplete Tasks Section */}
-        <Typography variant="h6" sx={{ mb: 2, color: '#222', fontWeight: 'bold' }}>Incomplete</Typography>
-        <TaskList
-          tasks={tasks.filter(task => !task.completed)}
-          onTaskClick={handleTaskClick}
-          onTaskNameChange={handleTaskNameChange}
-          onDelete={handleDeleteTask}
-          editIdx={editTaskIdx !== null ? editTaskIdx : (tasks.length - 1)}
-          setEditIdx={setEditTaskIdx}
-          showDetails={showDetails}
-          setShowDetails={setShowDetails}
-          selectedTask={selectedTask}
-          setSelectedTask={setSelectedTask}
-        />
-        {/* Completed Tasks Section */}
-        {tasks.some(task => task.completed) && (
-          <>
-            <Divider sx={{ my: 4, bgcolor: '#636e72' }} />
-            <Typography variant="h6" sx={{ mb: 2, color: '#222', fontWeight: 'bold' }}>Completed</Typography>
-            <Box>
-              <TaskList
-                tasks={tasks.filter(task => task.completed)}
-                onTaskClick={handleTaskClick}
-                onTaskNameChange={handleTaskNameChange}
-                onDelete={handleDeleteTask}
-                editIdx={null}
-                setEditIdx={setEditTaskIdx}
-                showDetails={showDetails}
-                setShowDetails={setShowDetails}
-                selectedTask={selectedTask}
-                setSelectedTask={setSelectedTask}
-              />
-            </Box>
-          </>
-        )}
-        <Fab color="primary" aria-label="add" sx={{ position: "fixed", bottom: 72, left: 260 }} onClick={async () => {
-          const currentList = lists[selectedList];
-          if (!currentList?.id) return;
-          // Insert new task in Supabase with default title
-          const { data, error } = await supabase
-            .from('tasks')
-            .insert({
-              list_id: currentList.id,
-              title: "New Task"
-              // Do NOT include id here, Supabase will generate it
-            })
-            .select();
-          if (data && data[0]) {
-            setTasks(tasks => [...tasks, data[0]]);
-            setEditTaskIdx(tasks.length); // Open edit box for the new task
-          }
-        }}>
-          <AddIcon />
-        </Fab>
-      </Box>
-      {/* Task Details Section */}
-      <Box sx={{ flexGrow: 1, p: 0, minWidth: 320, maxWidth: 480, bgcolor: '#b9fbc0', borderLeft: '1px solid #eee' }}>
-        <Box sx={{ p: 2, borderBottom: '1px solid #eee' }}>
-          <Typography variant="h6" sx={{ color: '#222', fontWeight: 'bold' }}>
-            {showDetails && selectedTask ? 'Details' : 'Details are hidden'}
-          </Typography>
-        </Box>
-        {showDetails && selectedTask ? (
-          <TaskDetail key={selectedTask?.id} task={selectedTask} onClose={handleDetailClose} onSave={handleDetailSave} onDelete={handleDeleteTask} />
-        ) : (
-          <Box sx={{ m: 4, color: '#888', textAlign: 'center' }}>
-            {/* ...existing code... */}
+            <Button variant="outlined" size="small" color="error" onClick={handleLogout}>
+              Log out
+            </Button>
           </Box>
-        )}
+          <Toolbar />
+          <Box sx={{ overflow: 'auto' }}>
+            <List>
+              {lists.map((list, idx) => (
+                <ListItem key={idx} disablePadding>
+                  <ListItemButton
+                    selected={selectedList === idx}
+                    onClick={async () => {
+                      setSelectedList(idx);
+                      // Load tasks for this list from Supabase
+                      const listId = lists[idx]?.id;
+                      if (listId) {
+                        const { data, error } = await supabase
+                          .from('tasks')
+                          .select('*')
+                          .eq('list_id', listId);
+                        setTasks(data || []);
+                      } else {
+                        setTasks([]);
+                      }
+                    }}
+                    sx={selectedList === idx ? {
+                      bgcolor: '#34c759 !important',
+                      color: '#222',
+                      borderRadius: '6px',
+                      mx: 1,
+                      '&:hover': { bgcolor: '#28a745 !important' }
+                    } : {}}
+                  >
+                    {editListIdx === idx ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                        <TextField
+                          value={editListValue}
+                          onChange={e => setEditListValue(e.target.value)}
+                          size="small"
+                          autoFocus
+                          fullWidth
+                          onClick={e => e.stopPropagation()}
+                          onDoubleClick={e => e.stopPropagation()}
+                        />
+                        <IconButton size="small" sx={{ ml: 1 }} onClick={e => { e.stopPropagation(); handleEditListSave(idx); }}>
+                          <CheckIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                        <ListItemText primary={list.name} />
+                        <IconButton size="small" onClick={e => { e.stopPropagation(); handleEditListClick(idx, list.name); }}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" color="error" sx={{ ml: 1 }} onClick={e => { e.stopPropagation(); handleDeleteList(idx); }}>
+                          {/* Delete icon */}
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                        </IconButton>
+                      </Box>
+                    )}
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+            <Divider sx={{ bgcolor: '#636e72' }} />
+            <List>
+              {addingList ? (
+                <ListItem disablePadding>
+                  <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', p: 1 }}>
+                    <TextField
+                      value={newListValue}
+                      onChange={e => setNewListValue(e.target.value)}
+                      size="small"
+                      autoFocus
+                      fullWidth
+                      placeholder="New list name"
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <IconButton size="small" sx={{ ml: 1 }} onClick={handleAddListSave}>
+                      <CheckIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" sx={{ ml: 1 }} color="error" onClick={handleAddListCancel}>
+                      {/* Cancel icon */}
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </IconButton>
+                  </Box>
+                </ListItem>
+              ) : (
+                <ListItem disablePadding>
+                  <ListItemButton onClick={() => setAddingList(true)}>
+                    <AddIcon sx={{ mr: 1 }} />
+                    <ListItemText primary="Add new list" />
+                  </ListItemButton>
+                </ListItem>
+              )}
+            </List>
+          </Box>
+        </Drawer>
+        {/* Tasks Section */}
+        <Box sx={{ flexGrow: 1, p: 0, minWidth: 320, maxWidth: 480, bgcolor: '#fff' }}>
+          <AppBar position="static" sx={{ bgcolor: "#b9fbc0", color: "#222" }}>
+            <Toolbar>
+              <Typography variant="h6" sx={{ flexGrow: 1 }}>
+                {lists[selectedList]?.name || "No List Selected"}
+              </Typography>
+              <IconButton color="inherit">
+                <SearchIcon />
+              </IconButton>
+              <IconButton color="inherit">
+                <ShareIcon />
+              </IconButton>
+              <IconButton color="inherit">
+                <MoreVertIcon />
+              </IconButton>
+            </Toolbar>
+          </AppBar>
+          {/* Incomplete Tasks Section */}
+          <Typography variant="h6" sx={{ mb: 2, color: '#222', fontWeight: 'bold' }}>Incomplete</Typography>
+          <TaskList
+            tasks={tasks.filter(task => !task.completed)}
+            onTaskClick={handleTaskClick}
+            onTaskNameChange={handleTaskNameChange}
+            onDelete={handleDeleteTask}
+            editIdx={editTaskIdx}
+            setEditIdx={setEditTaskIdx}
+            showDetails={showDetails}
+            setShowDetails={setShowDetails}
+            selectedTask={selectedTask}
+            setSelectedTask={setSelectedTask}
+          />
+          {/* Completed Tasks Section */}
+          {tasks.some(task => task.completed) && (
+            <>
+              <Divider sx={{ my: 4, bgcolor: '#636e72' }} />
+              <Typography variant="h6" sx={{ mb: 2, color: '#222', fontWeight: 'bold' }}>Completed</Typography>
+              <Box>
+                <TaskList
+                  tasks={tasks.filter(task => task.completed)}
+                  onTaskClick={handleTaskClick}
+                  onTaskNameChange={handleTaskNameChange}
+                  onDelete={handleDeleteTask}
+                  editIdx={null}
+                  setEditIdx={setEditTaskIdx}
+                  showDetails={showDetails}
+                  setShowDetails={setShowDetails}
+                  selectedTask={selectedTask}
+                  setSelectedTask={setSelectedTask}
+                />
+              </Box>
+            </>
+          )}
+          <Fab color="primary" aria-label="add" sx={{ position: "fixed", bottom: 72, left: 260 }} onClick={async () => {
+            const currentList = lists[selectedList];
+            if (!currentList?.id) return;
+            // Insert new task in Supabase with default title
+            const { data, error } = await supabase
+              .from('tasks')
+              .insert({
+                list_id: currentList.id,
+                title: "New Task"
+                // Do NOT include id here, Supabase will generate it
+              })
+              .select();
+            if (data && data[0]) {
+              setTasks(tasks => [...tasks, data[0]]);
+              setEditTaskIdx(tasks.length); // Open edit box for the new task
+            }
+          }}>
+            <AddIcon />
+          </Fab>
+        </Box>
+        {/* Task Details Section */}
+        <Box sx={{ flexGrow: 1, p: 0, minWidth: 320, maxWidth: 480, bgcolor: '#b9fbc0', borderLeft: '1px solid #eee' }}>
+          <Box sx={{ p: 2, borderBottom: '1px solid #eee' }}>
+            <Typography variant="h6" sx={{ color: '#222', fontWeight: 'bold' }}>
+              {showDetails && selectedTask ? 'Details' : 'Details are hidden'}
+            </Typography>
+          </Box>
+          {showDetails && selectedTask ? (
+            <TaskDetail
+              key={selectedTask?.id}
+              task={selectedTask}
+              details={selectedTaskDetails}
+              onClose={handleDetailClose}
+              onSave={handleDetailSave}
+              onDelete={handleDeleteTask}
+            />
+          ) : (
+            <Box sx={{ m: 4, color: '#888', textAlign: 'center' }}>
+              {/* ...existing code... */}
+            </Box>
+          )}
+        </Box>
       </Box>
-    </Box>
+    )
   );
 }
 
