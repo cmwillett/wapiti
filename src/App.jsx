@@ -2,6 +2,7 @@
 // forcing vercel update
 // ...existing code...
 import Drawer from "@mui/material/Drawer";
+import Button from "@mui/material/Button";
 import { supabase } from './supabaseClient';
 // import only once
 import { v4 as uuidv4 } from 'uuid';
@@ -46,6 +47,23 @@ function QuickAddTask() {
 }
 
 export default function App() {
+  // Handler to mark a task as complete/incomplete
+  const handleTaskComplete = async (task, completed) => {
+    if (!task?.id) return;
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ completed })
+      .eq('id', task.id)
+      .select();
+    if (data && data[0]) {
+      setTasks(tasks => tasks.map(t => t.id === task.id ? data[0] : t));
+    } else {
+      setTasks(tasks => tasks.map(t => t.id === task.id ? { ...t, completed } : t));
+    }
+  };
+  // Expose handler for TaskList
+  window.onTaskComplete = handleTaskComplete;
+  const [showDetails, setShowDetails] = useState(false);
   // ...existing code...
   // Example tasks for the selected list
   const [editTaskIdx, setEditTaskIdx] = useState(null);
@@ -176,6 +194,7 @@ export default function App() {
       setSelectedTask(task);
     }
     setDetailOpen(true);
+    setShowDetails(true);
   };
 
   // When details are saved, reload from Supabase
@@ -203,7 +222,8 @@ export default function App() {
   };
 
   return (
-    <Box sx={{ display: "flex", bgcolor: "#424242", minHeight: "100vh" }}>
+    <Box sx={{ display: 'flex', bgcolor: '#424242', minHeight: '100vh' }}>
+      {/* Lists Section */}
       <Drawer
         variant="permanent"
         sx={{
@@ -283,7 +303,8 @@ export default function App() {
           </List>
         </Box>
       </Drawer>
-      <Box component="main" sx={{ flexGrow: 1, p: 0 }}>
+      {/* Tasks Section */}
+      <Box sx={{ flexGrow: 1, p: 0, minWidth: 320, maxWidth: 480, bgcolor: '#fff' }}>
         <AppBar position="static" sx={{ bgcolor: "#b9fbc0", color: "#222" }}>
           <Toolbar>
             <Typography variant="h6" sx={{ flexGrow: 1 }}>
@@ -300,16 +321,42 @@ export default function App() {
             </IconButton>
           </Toolbar>
         </AppBar>
+        {/* Incomplete Tasks Section */}
+        <Typography variant="h6" sx={{ mb: 2, color: '#222', fontWeight: 'bold' }}>Incomplete</Typography>
         <TaskList
-          tasks={tasks}
+          tasks={tasks.filter(task => !task.completed)}
           onTaskClick={handleTaskClick}
           onTaskNameChange={handleTaskNameChange}
           onDelete={handleDeleteTask}
           editIdx={editTaskIdx !== null ? editTaskIdx : (tasks.length - 1)}
           setEditIdx={setEditTaskIdx}
+          showDetails={showDetails}
+          setShowDetails={setShowDetails}
+          selectedTask={selectedTask}
+          setSelectedTask={setSelectedTask}
         />
-        <TaskDetail open={detailOpen} task={selectedTask} onClose={handleDetailClose} onSave={handleDetailSave} onDelete={handleDeleteTask} />
-        <Fab color="primary" aria-label="add" sx={{ position: "fixed", bottom: 72, right: 16 }} onClick={async () => {
+        {/* Completed Tasks Section */}
+        {tasks.some(task => task.completed) && (
+          <>
+            <Divider sx={{ my: 4, bgcolor: '#636e72' }} />
+            <Typography variant="h6" sx={{ mb: 2, color: '#222', fontWeight: 'bold' }}>Completed</Typography>
+            <Box>
+              <TaskList
+                tasks={tasks.filter(task => task.completed)}
+                onTaskClick={handleTaskClick}
+                onTaskNameChange={handleTaskNameChange}
+                onDelete={handleDeleteTask}
+                editIdx={null}
+                setEditIdx={setEditTaskIdx}
+                showDetails={showDetails}
+                setShowDetails={setShowDetails}
+                selectedTask={selectedTask}
+                setSelectedTask={setSelectedTask}
+              />
+            </Box>
+          </>
+        )}
+        <Fab color="primary" aria-label="add" sx={{ position: "fixed", bottom: 72, left: 260 }} onClick={async () => {
           const currentList = lists[selectedList];
           if (!currentList?.id) return;
           // Insert new task in Supabase with default title
@@ -328,6 +375,21 @@ export default function App() {
         }}>
           <AddIcon />
         </Fab>
+      </Box>
+      {/* Task Details Section */}
+      <Box sx={{ flexGrow: 1, p: 0, minWidth: 320, maxWidth: 480, bgcolor: '#b9fbc0', borderLeft: '1px solid #eee' }}>
+        <Box sx={{ p: 2, borderBottom: '1px solid #eee' }}>
+          <Typography variant="h6" sx={{ color: '#222', fontWeight: 'bold' }}>
+            {showDetails && selectedTask ? 'Details' : 'Details are hidden'}
+          </Typography>
+        </Box>
+        {showDetails && selectedTask ? (
+          <TaskDetail key={selectedTask?.id} task={selectedTask} onClose={handleDetailClose} onSave={handleDetailSave} onDelete={handleDeleteTask} />
+        ) : (
+          <Box sx={{ m: 4, color: '#888', textAlign: 'center' }}>
+            {/* ...existing code... */}
+          </Box>
+        )}
       </Box>
     </Box>
   );

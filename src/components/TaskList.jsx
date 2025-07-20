@@ -9,6 +9,8 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import EditIcon from '@mui/icons-material/Edit';
 import TextField from '@mui/material/TextField';
 import CheckIcon from '@mui/icons-material/Check';
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 
 export default function TaskList({ tasks, onTaskClick, onTaskNameChange, editIdx, onDelete }) {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
@@ -75,8 +77,20 @@ export default function TaskList({ tasks, onTaskClick, onTaskNameChange, editIdx
                 </IconButton>
               </Box>
             ) : (
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Typography variant="h6" sx={{ mr: 1 }}>{task.title}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Checkbox
+                    checked={!!task.completed}
+                    onChange={e => {
+                      if (typeof window.onTaskComplete === 'function') window.onTaskComplete(task, e.target.checked);
+                    }}
+                    sx={{ mr: 1 }}
+                  />
+                  <Typography variant="h6" sx={{ mr: 1 }}>{task.title}</Typography>
+                </Box>
+                <Button variant="outlined" size="small" sx={{ mt: 1 }} onClick={e => { e.stopPropagation(); onTaskClick(task); }}>
+                  Show details
+                </Button>
               </Box>
             )}
             {/* Notes removed, only show title */}
