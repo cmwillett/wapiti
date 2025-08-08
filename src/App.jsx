@@ -101,6 +101,22 @@ export default function App() {
       setTasks(tasks => tasks.map(t => t.id === task.id ? { ...t, completed } : t));
     }
   };
+  // Handler to delete a list
+  const handleDeleteList = async (idx) => {
+    const listId = lists[idx]?.id;
+    if (!listId) return;
+    const { error } = await supabase
+      .from('lists')
+      .delete()
+      .eq('id', listId);
+    if (!error) {
+      setLists(lists => lists.filter((_, i) => i !== idx));
+      // Optionally reset selectedList if needed
+      if (selectedList === idx) setSelectedList(0);
+    } else {
+      alert("Error deleting list: " + error.message);
+    }
+  };
   // Handler to add a new list (inline input)
   const handleAddListSave = async () => {
     if (!newListValue.trim()) return;
