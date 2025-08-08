@@ -106,7 +106,9 @@ export default function App() {
     if (!newListValue.trim()) return;
     const { data, error } = await supabase
       .from('lists')
+      console.log('Adding list for user: ', user)
       .insert([{ name: newListValue.trim(), user_id: user?.id }])
+      console.log('Insert result: ', data, error)
       .select();
     if (data && data[0]) {
       setLists(lists => [...lists, data[0]]);
@@ -181,6 +183,24 @@ export default function App() {
 
   // ...existing code...
 
+  // Load lists for user whenever user changes (login, refresh)
+  React.useEffect(() => {
+    const loadLists = async () => {
+      if (user?.id) {
+        const { data, error } = await supabase
+          .from('lists')
+          .select('*')
+          .eq('user_id', user.id);
+        setLists(data || []);
+      } else {
+        setLists([]);
+      }
+    };
+    if (user) {
+      loadLists();
+    }
+  }, [user]);
+
   // Load tasks for selected list whenever lists or selectedList change
   React.useEffect(() => {
     const loadTasks = async () => {
@@ -199,7 +219,7 @@ export default function App() {
       loadTasks();
     }
     setEditTaskIdx(null);
-  }, [user, lists, selectedList]);
+  }, [lists, selectedList]);
 
   return (
     !user ? (
