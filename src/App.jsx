@@ -101,7 +101,7 @@ export default function App() {
       setTasks(tasks => tasks.map(t => t.id === task.id ? { ...t, completed } : t));
     }
   };
-  // Handler to delete a list
+  // Handler to delete a list2
   const handleDeleteList = async (idx) => {
     const listId = lists[idx]?.id;
     if (!listId) return;
