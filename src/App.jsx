@@ -120,12 +120,12 @@ export default function App() {
   // Handler to add a new list (inline input)
   const handleAddListSave = async () => {
     if (!newListValue.trim()) return;
+    console.log('Adding list for user: ', user);
     const { data, error } = await supabase
       .from('lists')
-      console.log('Adding list for user: ', user)
       .insert([{ name: newListValue.trim(), user_id: user?.id }])
-      console.log('Insert result: ', data, error)
       .select();
+    console.log('Insert result: ', data, error);
     if (data && data[0]) {
       setLists(lists => [...lists, data[0]]);
       setAddingList(false);
